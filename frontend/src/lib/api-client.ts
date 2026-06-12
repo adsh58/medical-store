@@ -1,8 +1,24 @@
 import axios from "axios";
 
-// Resolve backend base URL from environment variable
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+// Resolve backend base URL from environment variable dynamically with robust fallback
+const getApiBaseUrl = () => {
+  let url = process.env.NEXT_PUBLIC_API_URL;
+  if (!url) {
+    if (process.env.NODE_ENV === "development") {
+      url = "http://localhost:8000";
+    } else {
+      url = "https://medical-store-api-uala.onrender.com";
+    }
+  }
+  
+  url = url.trim();
+  if (!url.endsWith("/api/v1") && !url.endsWith("/api/v1/")) {
+    url = url.endsWith("/") ? `${url}api/v1` : `${url}/api/v1`;
+  }
+  return url;
+};
 
+const API_BASE_URL = getApiBaseUrl();
 
 // Create Axios client pointing to the backend API base path
 const apiClient = axios.create({
@@ -11,6 +27,7 @@ const apiClient = axios.create({
     "Content-Type": "application/json",
   },
 });
+
 
 // Request interceptor to append authorization token
 apiClient.interceptors.request.use(
