@@ -1,8 +1,11 @@
 import axios from "axios";
 
+// Resolve backend base URL from environment variable (required in production)
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
 // Create Axios client pointing to the backend API base path
 const apiClient = axios.create({
-  baseURL: "http://localhost:8000/api/v1",
+  baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
@@ -35,7 +38,7 @@ apiClient.interceptors.response.use(
           if (refreshToken) {
             // Call token refresh endpoint to renew tokens
             const response = await axios.post(
-              "http://localhost:8000/api/v1/auth/refresh",
+              `${API_BASE_URL}/auth/refresh`,
               {},
               {
                 headers: { Authorization: `Bearer ${refreshToken}` }

@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7)
     GEMINI_API_KEY: str = Field(default="mock_key")
     LOG_LEVEL: str = Field(default="INFO")
+    FRONTEND_ORIGIN: str = Field(
+        default="http://localhost:3000",
+        description="Allowed frontend origin for CORS (set to your Vercel URL in production)"
+    )
 
     class Config:
         env_file = ".env"

@@ -16,7 +16,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user) {
-      router.replace("/dashboard");
+      router.replace("/");
     }
   }, [user, router]);
 
@@ -31,7 +31,7 @@ export default function LoginPage() {
 
     try {
       await login({ email, password });
-      router.replace("/dashboard");
+      router.replace("/");
     } catch (err: any) {
       setError(err.message || "Invalid credentials");
       setSubmitting(false);
