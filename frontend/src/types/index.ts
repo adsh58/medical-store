@@ -123,7 +123,6 @@ export interface PurchaseInvoice {
   invoice_number: string;
   invoice_date: string;
   total_amount: number;
-  file_url?: string;
   ai_status: string;
   items: PurchaseInvoiceItem[];
   created_at: string;

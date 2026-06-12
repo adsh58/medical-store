@@ -22,6 +22,9 @@ class ExtractedInvoiceItem(BaseModel):
     purchase_rate: float = Field(description="The purchase rate per unit or pack size")
 
 class ExtractedInvoice(BaseModel):
+    invoice_number: str = Field(description="The invoice number or billing number found on the invoice")
+    supplier_name: str = Field(description="The name of the supplying agency, company, or distributor")
+    invoice_date: str = Field(description="The invoice issue date in YYYY-MM-DD format")
     items: List[ExtractedInvoiceItem]
 
 
@@ -47,6 +50,9 @@ class RateComparisonItem(BaseModel):
 
 class InvoiceAnalysisReport(BaseModel):
     file_name: str
+    invoice_number: str
+    supplier_name: str
+    invoice_date: date
     extracted_items: List[RateComparisonItem]
     total_increases: int
     total_decreases: int
@@ -111,7 +117,7 @@ class AIService:
         else:
             # Fallback mock parsing mode for testing / clean local execution
             logger.info("Generating mock Gemini extraction data...")
-            extracted_invoice = self._get_mock_extraction()
+            extracted_invoice = self._get_mock_extraction(file_name)
 
         # Run price trend analysis & comparison
         report = await self._generate_comparison_report(db, extracted_invoice, file_name)
@@ -185,18 +191,36 @@ class AIService:
                 )
             )
 
+        # Convert string date to date object safely
+        try:
+            inv_date = date.fromisoformat(extracted.invoice_date)
+        except ValueError:
+            inv_date = date.today()
+
         return InvoiceAnalysisReport(
             file_name=file_name,
+            invoice_number=extracted.invoice_number,
+            supplier_name=extracted.supplier_name,
+            invoice_date=inv_date,
             extracted_items=analysis_items,
             total_increases=total_increases,
             total_decreases=total_decreases
         )
 
-    def _get_mock_extraction(self) -> ExtractedInvoice:
+    def _get_mock_extraction(self, file_name: Optional[str] = None) -> ExtractedInvoice:
         """
         Mock invoice payload modeling a standard pharmacy supplier invoice.
         """
+        invoice_number = "INV-E2E-Mock-101"
+        if file_name:
+            name_part = file_name.split(".")[0]
+            clean_part = "".join(c for c in name_part if c.isalnum() or c in "-_")
+            invoice_number = f"INV-{clean_part}"
+
         return ExtractedInvoice(
+            invoice_number=invoice_number,
+            supplier_name="E2E Mock Supplier Agency",
+            invoice_date="2026-06-12",
             items=[
                 ExtractedInvoiceItem(
                     medicine_name="Paracetamol 650mg",

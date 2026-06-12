@@ -236,7 +236,6 @@ class PurchaseInvoiceResponse(BaseModel):
     invoice_number: str
     invoice_date: date
     total_amount: float
-    file_url: Optional[str] = None
     ai_status: str
     items: List[PurchaseInvoiceItemResponse] = []
     created_at: datetime

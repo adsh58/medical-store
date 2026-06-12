@@ -23,6 +23,15 @@ class RoleRepository(BaseRepository[Role]):
         return result.scalars().first()
 
 class UserRepository(BaseRepository[User]):
+    async def get(self, db: AsyncSession, id: uuid.UUID) -> Optional[User]:
+        from sqlalchemy.orm import selectinload
+        query = select(self.model).filter(
+            self.model.id == id,
+            self.model.deleted_at == None
+        ).options(selectinload(self.model.role))
+        result = await db.execute(query)
+        return result.scalars().first()
+
     async def get_by_email(self, db: AsyncSession, email: str) -> Optional[User]:
         # Include role model relation in the query load to save db roundtrips
         from sqlalchemy.orm import selectinload

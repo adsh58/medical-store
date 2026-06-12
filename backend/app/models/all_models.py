@@ -164,7 +164,6 @@ class PurchaseInvoice(Base):
     invoice_number: Mapped[str] = mapped_column(String(100), nullable=False)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
     total_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-    file_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     ai_status: Mapped[str] = mapped_column(String(50), default="PENDING", nullable=False)  # PENDING, PROCESSING, COMPLETED, FAILED
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
