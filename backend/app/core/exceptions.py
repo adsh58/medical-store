@@ -52,6 +52,8 @@ def register_exception_handlers(app):
 
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):
+        import traceback
+        traceback.print_exc()
         logger.exception(f"Unhandled exception on {request.url.path}: {str(exc)}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
