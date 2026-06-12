@@ -1,0 +1,403 @@
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, model_validator
+from datetime import datetime, date
+from typing import List, Optional
+import uuid
+
+# ==========================================
+# 1. AUTHENTICATION & USER SCHEMAS
+# ==========================================
+class RoleResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    role_name: str  # ADMIN, MANAGER, CASHIER, DOCTOR
+
+class UserResponse(BaseModel):
+    id: uuid.UUID
+    email: EmailStr
+    full_name: str
+    is_active: bool
+    role: RoleResponse
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class Token(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+class TokenPayload(BaseModel):
+    sub: str  # User ID
+    role: str
+    exp: int
+
+# ==========================================
+# 2. MEDICINES & CATEGORIES
+# ==========================================
+class MedicineCategoryCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class MedicineCategoryResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class MedicineCreate(BaseModel):
+    category_id: uuid.UUID
+    name: str
+    generic_name: str
+    company: str
+    pack_size: str
+    mrp: float = Field(gt=0)
+    current_purchase_rate: float = Field(gt=0)
+    doctor_selling_rate: float = Field(gt=0)
+    customer_selling_rate: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validate_pricing_margins(self) -> 'MedicineCreate':
+        if self.doctor_selling_rate < self.current_purchase_rate:
+            raise ValueError("Doctor selling rate must be greater than or equal to current purchase rate")
+        if self.customer_selling_rate < self.doctor_selling_rate:
+            raise ValueError("Customer selling rate must be greater than or equal to doctor selling rate")
+        if self.customer_selling_rate > self.mrp:
+            raise ValueError("Customer selling rate must be less than or equal to Maximum Retail Price (MRP)")
+        return self
+
+class BatchStockResponse(BaseModel):
+    id: uuid.UUID
+    batch_number: str
+    expiry_date: date
+    mrp: float
+    purchase_rate: float
+    current_stock: int
+    minimum_stock: int
+    reorder_level: int
+    location_coordinate: str
+    model_config = ConfigDict(from_attributes=True)
+
+class MedicineResponse(BaseModel):
+    id: uuid.UUID
+    category_id: uuid.UUID
+    name: str
+    generic_name: str
+    company: str
+    pack_size: str
+    mrp: float
+    current_purchase_rate: float
+    doctor_selling_rate: float
+    customer_selling_rate: float
+    created_at: datetime
+    batches: List[BatchStockResponse] = []
+    model_config = ConfigDict(from_attributes=True)
+
+# ==========================================
+# 3. RACKS & SHELVES
+# ==========================================
+class RackCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class ShelfCreate(BaseModel):
+    rack_id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+
+class BoxCreate(BaseModel):
+    shelf_id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+
+class BoxResponse(BaseModel):
+    id: uuid.UUID
+    shelf_id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class ShelfResponse(BaseModel):
+    id: uuid.UUID
+    rack_id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    boxes: List[BoxResponse] = []
+    model_config = ConfigDict(from_attributes=True)
+
+class RackResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    shelves: List[ShelfResponse] = []
+    model_config = ConfigDict(from_attributes=True)
+
+# ==========================================
+# 4. AGENCIES
+# ==========================================
+class AgencyCreate(BaseModel):
+    name: str
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+
+class AgencyResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+# ==========================================
+# 5. BATCHES, STOCK & LOCATION
+# ==========================================
+class BatchCreate(BaseModel):
+    medicine_id: uuid.UUID
+    batch_number: str
+    expiry_date: date
+    mrp: float
+    purchase_rate: float
+
+class BatchResponse(BaseModel):
+    id: uuid.UUID
+    medicine_id: uuid.UUID
+    batch_number: str
+    expiry_date: date
+    mrp: float
+    purchase_rate: float
+    location_coordinate: Optional[str] = "Unassigned"
+    model_config = ConfigDict(from_attributes=True)
+
+class StockResponse(BaseModel):
+    id: uuid.UUID
+    batch: BatchResponse
+    current_stock: int
+    minimum_stock: int
+    reorder_level: int
+    model_config = ConfigDict(from_attributes=True)
+
+class StockUpdate(BaseModel):
+    current_stock: int
+    minimum_stock: Optional[int] = None
+    reorder_level: Optional[int] = None
+
+class LocationMappingCreate(BaseModel):
+    batch_id: uuid.UUID
+    box_id: uuid.UUID
+
+class LocationMappingResponse(BaseModel):
+    id: uuid.UUID
+    batch_id: uuid.UUID
+    box: BoxResponse
+    model_config = ConfigDict(from_attributes=True)
+
+# ==========================================
+# 6. PURCHASES & INVOICES
+# ==========================================
+class PurchaseInvoiceItemCreate(BaseModel):
+    medicine_id: uuid.UUID
+    batch_number: str
+    quantity: int = Field(gt=0)
+    purchase_rate: float = Field(gt=0)
+    expiry_date: date
+
+class PurchaseInvoiceCreate(BaseModel):
+    agency_id: uuid.UUID
+    invoice_number: str
+    invoice_date: date
+    total_amount: float
+    items: List[PurchaseInvoiceItemCreate]
+
+class PurchaseInvoiceItemResponse(BaseModel):
+    id: uuid.UUID
+    medicine_id: uuid.UUID
+    batch_number: str
+    quantity: int
+    purchase_rate: float
+    expiry_date: date
+    model_config = ConfigDict(from_attributes=True)
+
+class PurchaseInvoiceResponse(BaseModel):
+    id: uuid.UUID
+    agency_id: uuid.UUID
+    invoice_number: str
+    invoice_date: date
+    total_amount: float
+    file_url: Optional[str] = None
+    ai_status: str
+    items: List[PurchaseInvoiceItemResponse] = []
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+# ==========================================
+# 7. SALES REGISTERS
+# ==========================================
+class SaleItemCreate(BaseModel):
+    batch_id: uuid.UUID
+    quantity: int = Field(gt=0)
+    discount_amount: float = Field(default=0.0, ge=0)
+
+class SaleCreate(BaseModel):
+    doctor_id: Optional[uuid.UUID] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    payment_mode: str  # CASH, UPI, CARD, CREDIT
+    items: List[SaleItemCreate]
+
+class SaleItemResponse(BaseModel):
+    id: uuid.UUID
+    batch: BatchResponse
+    quantity: int
+    unit_price: float
+    discount_amount: float
+    net_amount: float
+    model_config = ConfigDict(from_attributes=True)
+
+class SaleResponse(BaseModel):
+    id: uuid.UUID
+    cashier_id: uuid.UUID
+    doctor_id: Optional[uuid.UUID] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    total_amount: float
+    discount_amount: float
+    net_amount: float
+    payment_mode: str
+    items: List[SaleItemResponse] = []
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+# ==========================================
+# 8. HISTORICAL RECORDS
+# ==========================================
+class PriceHistoryResponse(BaseModel):
+    id: uuid.UUID
+    medicine_id: uuid.UUID
+    old_doctor_rate: float
+    new_doctor_rate: float
+    old_customer_rate: float
+    new_customer_rate: float
+    changed_by: uuid.UUID
+    changed_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class PurchaseHistoryResponse(BaseModel):
+    id: uuid.UUID
+    medicine_id: uuid.UUID
+    agency_id: uuid.UUID
+    invoice_id: uuid.UUID
+    batch_number: str
+    old_purchase_rate: float
+    new_purchase_rate: float
+    purchased_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+# ==========================================
+# 9. ALERTS & INTELLIGENCE
+# ==========================================
+class ExpiryAlertResponse(BaseModel):
+    id: uuid.UUID
+    batch_id: uuid.UUID
+    batch: BatchResponse
+    alert_date: date
+    alert_type: str
+    status: str
+    resolved_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class IntelligenceResponse(BaseModel):
+    id: uuid.UUID
+    medicine_id: uuid.UUID
+    avg_monthly_sales: float
+    suggested_reorder_qty: int
+    inventory_status: str
+    last_calculated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+# ==========================================
+# 10. AI SCAN LOGGING
+# ==========================================
+class AIInvoiceProcessingLogResponse(BaseModel):
+    id: uuid.UUID
+    invoice_id: Optional[uuid.UUID] = None
+    file_name: str
+    file_size_bytes: int
+    status: str
+    error_message: Optional[str] = None
+    token_usage_prompt: int
+    token_usage_completion: int
+    processed_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==========================================
+# 11. MEDICINE SEARCH ASSISTANT
+# ==========================================
+class AssistantSearchRequest(BaseModel):
+    query: str
+
+class AssistantSearchItem(BaseModel):
+    id: uuid.UUID
+    name: str
+    generic_name: str
+    company: str
+    pack_size: str
+    mrp: float
+    current_purchase_rate: float
+    doctor_selling_rate: float
+    customer_selling_rate: float
+    matching_reason: str
+    confidence: float
+    batches: List[BatchStockResponse] = []
+
+class AssistantSearchResponse(BaseModel):
+    items: List[AssistantSearchItem]
+
+
+# ==========================================
+# 12. STOCK MOVEMENT & STAGNANCY REPORTS
+# ==========================================
+class StockMovementResponse(BaseModel):
+    id: uuid.UUID
+    medicine_id: uuid.UUID
+    medicine: Optional[MedicineResponse] = None
+    batch_id: uuid.UUID
+    batch: Optional[BatchResponse] = None
+    old_quantity: int
+    new_quantity: int
+    difference: int
+    reason: str
+    user_id: Optional[uuid.UUID] = None
+    user: Optional[UserResponse] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class StockAdjustmentRequest(BaseModel):
+    batch_id: uuid.UUID
+    new_quantity: int = Field(ge=0)
+    reason: str = Field(default="MANUAL_ADJUSTMENT")
+
+class DeadStockResponse(BaseModel):
+    medicine_id: uuid.UUID
+    medicine_name: str
+    generic_name: str
+    company: str
+    current_stock: int
+    last_sale_date: Optional[datetime] = None
+    stock_value: float
+    model_config = ConfigDict(from_attributes=True)
+
+

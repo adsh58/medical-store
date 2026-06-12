@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: medical_postgres
+    environment:
+      POSTGRES_DB: medical_store
+      POSTGRES_USER: medical_user
+      POSTGRES_PASSWORD: medical_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medical_user -d medical_store"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: medical_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: medical_backend
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://medical_user:medical_password@db:5432/medical_store
+      - SYNC_DATABASE_URL=postgresql://medical_user:medical_password@db:5432/medical_store
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=9a622543e498c4f9f2579dfd9e29ee872b7a9505c8d6df022b7a9de0ea8e4c76
+      - JWT_REFRESH_SECRET_KEY=51bca4db51c8a14a3f5aef346d03cf873e35a3bb4bb5ef91de4a3dfb4e9fcf01
+      - ACCESS_TOKEN_EXPIRE_MINUTES=15
+      - REFRESH_TOKEN_EXPIRE_DAYS=7
+      - GEMINI_API_KEY=mock_key_for_now
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/workspace
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
