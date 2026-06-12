@@ -37,4 +37,50 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         extra = "ignore"
 
+    def __init__(self, **values):
+        super().__init__(**values)
+        
+        # 1. Resolve DATABASE_URL from environment if set
+        db_env = os.environ.get("DATABASE_URL")
+        if db_env:
+            self.DATABASE_URL = db_env
+            
+        # 2. Resolve SYNC_DATABASE_URL from environment if set, otherwise derive from DATABASE_URL
+        sync_env = os.environ.get("SYNC_DATABASE_URL")
+        if sync_env:
+            self.SYNC_DATABASE_URL = sync_env
+        elif db_env:
+            self.SYNC_DATABASE_URL = db_env
+            
+        # 3. Clean and prepare async DATABASE_URL (for asyncpg)
+        url = self.DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            
+        if "sslmode=" in url:
+            import re
+            url = re.sub(r'sslmode=[^&]+', 'ssl=require', url)
+        elif "ssl=" not in url and "neon.tech" in url:
+            url = url + ("&" if "?" in url else "?") + "ssl=require"
+            
+        self.DATABASE_URL = url
+        
+        # 4. Clean and prepare sync SYNC_DATABASE_URL (for psycopg2)
+        sync_url = self.SYNC_DATABASE_URL
+        if sync_url.startswith("postgresql+asyncpg://"):
+            sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        elif sync_url.startswith("postgres://"):
+            sync_url = sync_url.replace("postgres://", "postgresql://", 1)
+            
+        if "ssl=" in sync_url:
+            import re
+            sync_url = re.sub(r'ssl=[^&]+', 'sslmode=require', sync_url)
+        elif "sslmode=" not in sync_url and "neon.tech" in sync_url:
+            sync_url = sync_url + ("&" if "?" in sync_url else "?") + "sslmode=require"
+            
+        self.SYNC_DATABASE_URL = sync_url
+
 settings = Settings()
+
