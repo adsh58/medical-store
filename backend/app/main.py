@@ -104,13 +104,24 @@ app = FastAPI(
 )
 
 # CORS configuration
+origins = [
+    "http://localhost:3000",
+    "https://medical-store-mskiiy3aw-adarsh-m-projects.vercel.app",
+]
+if settings.FRONTEND_ORIGIN:
+    for origin in settings.FRONTEND_ORIGIN.split(","):
+        clean_origin = origin.strip()
+        if clean_origin and clean_origin not in origins:
+            origins.append(clean_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict to NextJS domain in production
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Exception handlers mapping
 register_exception_handlers(app)
