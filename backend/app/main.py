@@ -106,6 +106,7 @@ app = FastAPI(
 # CORS configuration
 origins = [
     "http://localhost:3000",
+    "https://medical-store-murex.vercel.app",
     "https://medical-store-mskiiy3aw-adarsh-m-projects.vercel.app",
 ]
 if settings.FRONTEND_ORIGIN:
