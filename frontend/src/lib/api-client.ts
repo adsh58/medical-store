@@ -1,7 +1,8 @@
 import axios from "axios";
 
-// Resolve backend base URL from environment variable (required in production)
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+// Resolve backend base URL from environment variable
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+
 
 // Create Axios client pointing to the backend API base path
 const apiClient = axios.create({
