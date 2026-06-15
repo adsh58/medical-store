@@ -8,8 +8,7 @@ from app.core.logging import setup_logging
 from app.core.exceptions import register_exception_handlers
 from app.database import engine, AsyncSessionLocal
 
-# Import routers
-from app.routers import auth, medicines, agencies, purchase, inventory, racks, sales, alerts, intelligence
+from app.routers import auth, medicines, agencies, purchase, inventory, racks, sales, alerts, intelligence, customers, settings
 
 logger = logging.getLogger("app.main")
 
@@ -71,6 +70,21 @@ async def seed_data():
                     is_active=True
                 )
                 db.add(admin_user)
+            
+            # Seed default system settings
+            from app.models.all_models import SystemSetting
+            query_setting = select(SystemSetting)
+            res_setting = await db.execute(query_setting)
+            setting = res_setting.scalars().first()
+            if not setting:
+                logger.info("Seeding default system settings...")
+                default_setting = SystemSetting(
+                    store_name="Alpha Pharmacy",
+                    currency="$",
+                    customer_margin=30.0,
+                    doctor_margin=15.0
+                )
+                db.add(default_setting)
             
             await db.commit()
             logger.info("Database seeding checked/completed.")
@@ -137,6 +151,8 @@ app.include_router(racks.router, prefix="/api/v1")
 app.include_router(sales.router, prefix="/api/v1")
 app.include_router(alerts.router, prefix="/api/v1")
 app.include_router(intelligence.router, prefix="/api/v1")
+app.include_router(customers.router, prefix="/api/v1")
+app.include_router(settings.router, prefix="/api/v1")
 
 @app.get("/health", tags=["Health Checker"])
 async def health():

@@ -10,14 +10,14 @@ from app.models.all_models import Role, User, Medicine, Batch, Stock, Sales, Sal
 from app.schemas.all_schemas import (
     UserCreate, UserLogin, Token, MedicineCreate, AgencyCreate, 
     PurchaseInvoiceCreate, SaleCreate, RackCreate, ShelfCreate, BoxCreate, LocationMappingCreate,
-    StockAdjustmentRequest, DeadStockResponse
+    StockAdjustmentRequest, DeadStockResponse, MedicineUpdate, CustomerCreate, SystemSettingUpdate
 )
 from app.repositories.all_repos import (
     user_repo, role_repo, medicine_repo, category_repo, agency_repo, 
     invoice_repo, invoice_item_repo, batch_repo, stock_repo, 
     location_mapping_repo, sales_repo, sale_item_repo, price_history_repo, 
     purchase_history_repo, intelligence_repo, expiry_repo, rack_repo, shelf_repo, box_repo,
-    stock_movement_repo
+    stock_movement_repo, customer_repo, setting_repo
 )
 
 # ==========================================
@@ -66,6 +66,38 @@ class MedicineService:
         
         med = await medicine_repo.create(db, obj_in=medicine_in.model_dump())
         return med
+
+    async def update_medicine(self, db: AsyncSession, medicine_id: uuid.UUID, medicine_in: MedicineUpdate, changed_by: uuid.UUID) -> Medicine:
+        med = await medicine_repo.get(db, medicine_id)
+        if not med:
+            raise NotFoundException("Medicine not found")
+        
+        if medicine_in.name and medicine_in.name != med.name:
+            existing = await medicine_repo.get_by_name(db, medicine_in.name)
+            if existing:
+                raise BadRequestException("Medicine with this name already exists")
+        
+        old_doctor_rate = float(med.doctor_selling_rate)
+        old_customer_rate = float(med.customer_selling_rate)
+        
+        update_data = medicine_in.model_dump(exclude_unset=True)
+        med = await medicine_repo.update(db, db_obj=med, obj_in=update_data)
+        
+        new_doctor_rate = float(med.doctor_selling_rate)
+        new_customer_rate = float(med.customer_selling_rate)
+        
+        if old_doctor_rate != new_doctor_rate or old_customer_rate != new_customer_rate:
+            await price_history_repo.create(db, obj_in={
+                "medicine_id": med.id,
+                "old_doctor_rate": old_doctor_rate,
+                "new_doctor_rate": new_doctor_rate,
+                "old_customer_rate": old_customer_rate,
+                "new_customer_rate": new_customer_rate,
+                "changed_by": changed_by
+            })
+            
+        return med
+
 
 # ==========================================
 # RACK & LOCATION SERVICE
@@ -481,3 +513,38 @@ sales_service = SalesService()
 intelligence_service = IntelligenceService()
 expiry_service = ExpiryService()
 inventory_service = InventoryService()
+
+
+class CustomerService:
+    async def create_customer(self, db: AsyncSession, customer_in: CustomerCreate):
+        existing = await customer_repo.get_by_phone(db, customer_in.phone)
+        if existing:
+            raise BadRequestException("Customer with this phone number already registered")
+        return await customer_repo.create(db, obj_in=customer_in.model_dump())
+
+    async def update_customer(self, db: AsyncSession, customer_id: uuid.UUID, customer_in: CustomerCreate):
+        cust = await customer_repo.get(db, customer_id)
+        if not cust:
+            raise NotFoundException("Customer not found")
+        if customer_in.phone and customer_in.phone != cust.phone:
+            existing = await customer_repo.get_by_phone(db, customer_in.phone)
+            if existing:
+                raise BadRequestException("Customer with this phone number already registered")
+        update_data = customer_in.model_dump(exclude_unset=True)
+        return await customer_repo.update(db, db_obj=cust, obj_in=update_data)
+
+
+class SystemSettingService:
+    async def get_settings(self, db: AsyncSession):
+        return await setting_repo.get_singleton(db)
+
+    async def update_settings(self, db: AsyncSession, settings_in: SystemSettingUpdate):
+        setting = await setting_repo.get_singleton(db)
+        update_data = settings_in.model_dump(exclude_unset=True)
+        updated = await setting_repo.update(db, db_obj=setting, obj_in=update_data)
+        return updated
+
+
+customer_service = CustomerService()
+setting_service = SystemSettingService()
+

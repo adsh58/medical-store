@@ -36,6 +36,27 @@ export default function SalesPOSPage() {
   const [paymentMode, setPaymentMode] = useState<string>("CASH");
   const [checkoutResult, setCheckoutResult] = useState<any>(null);
 
+  // Dynamic currency query
+  const { data: settingsData } = useQuery<any>({
+    queryKey: ["system-settings"],
+    queryFn: () => apiClient.get("/settings").then(res => res.data)
+  });
+  const currency = settingsData?.currency || "$";
+
+  // Customer search states
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+
+  // Customer autocomplete search query
+  const { data: customerSearchResults } = useQuery<any[]>({
+    queryKey: ["pos-customer-search", customerSearch],
+    queryFn: () => {
+      if (!customerSearch) return [];
+      return apiClient.get(`/customers?search=${encodeURIComponent(customerSearch)}`).then(res => res.data);
+    },
+    enabled: customerSearch.length >= 3 || /^\d+$/.test(customerSearch)
+  });
+
   // Queries
   const { data: medicines, isLoading: loadingMeds, refetch: refetchMeds } = useQuery<Medicine[]>({
     queryKey: ["pos-medicines", search],
@@ -220,9 +241,9 @@ export default function SalesPOSPage() {
                           <p className="text-xs text-slate-400">{med.generic_name} • {med.company}</p>
                         </div>
                         <div className="text-right text-[11px] text-slate-500 dark:text-slate-400">
-                          <p>Customer: <strong className="text-emerald-500">${med.customer_selling_rate.toFixed(2)}</strong></p>
-                          <p>Doctor: <strong>${med.doctor_selling_rate.toFixed(2)}</strong></p>
-                          <p>MRP: <strong>${med.mrp.toFixed(2)}</strong></p>
+                          <p>Customer: <strong className="text-emerald-500">{currency}{med.customer_selling_rate.toFixed(2)}</strong></p>
+                          <p>Doctor: <strong>{currency}{med.doctor_selling_rate.toFixed(2)}</strong></p>
+                          <p>MRP: <strong>{currency}{med.mrp.toFixed(2)}</strong></p>
                         </div>
                       </div>
 
@@ -329,7 +350,7 @@ export default function SalesPOSPage() {
                       <div className="flex items-center gap-1">
                         <span className="text-slate-400">Discount:</span>
                         <div className="relative">
-                          <span className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                          <span className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-400">{currency}</span>
                           <input
                             type="number"
                             step="0.01"
@@ -344,9 +365,9 @@ export default function SalesPOSPage() {
 
                       {/* Total */}
                       <div className="text-right">
-                        <p className="text-[10px] text-slate-400 line-through">${(item.unitPrice * item.quantity).toFixed(2)}</p>
+                        <p className="text-[10px] text-slate-400 line-through">{currency}{(item.unitPrice * item.quantity).toFixed(2)}</p>
                         <p className="font-semibold text-slate-900 dark:text-slate-50">
-                          ${((item.unitPrice * item.quantity) - item.discountAmount).toFixed(2)}
+                          {currency}{((item.unitPrice * item.quantity) - item.discountAmount).toFixed(2)}
                         </p>
                       </div>
                     </div>
@@ -362,6 +383,41 @@ export default function SalesPOSPage() {
             {/* Customer information */}
             <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-3">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Customer & Referral Details</h3>
+              
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search registered customer (Name/Mobile)..."
+                  value={customerSearch}
+                  onChange={(e) => {
+                    setCustomerSearch(e.target.value);
+                    setShowCustomerDropdown(true);
+                  }}
+                  onFocus={() => setShowCustomerDropdown(true)}
+                  className="w-full rounded border border-slate-200 bg-white p-2 text-xs dark:border-slate-800 dark:bg-slate-900"
+                />
+                
+                {showCustomerDropdown && customerSearch && customerSearchResults && customerSearchResults.length > 0 && (
+                  <div className="absolute z-15 mt-1 w-full rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-950 max-h-48 overflow-y-auto">
+                    {customerSearchResults.map((cust: any) => (
+                      <div
+                        key={cust.id}
+                        onClick={() => {
+                          setCustomerName(cust.name);
+                          setCustomerPhone(cust.phone);
+                          setCustomerSearch(cust.name);
+                          setShowCustomerDropdown(false);
+                        }}
+                        className="cursor-pointer px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-350 dark:hover:bg-slate-850 flex justify-between"
+                      >
+                        <span className="font-semibold">{cust.name}</span>
+                        <span className="text-slate-400">{cust.phone}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <input
                   type="text"
@@ -425,15 +481,15 @@ export default function SalesPOSPage() {
             <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-2 text-xs">
               <div className="flex justify-between text-slate-500">
                 <span>Total Items Subtotal:</span>
-                <span>${subtotal.toFixed(2)}</span>
+                <span>{currency}{subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-slate-500">
                 <span>Discounts Subtractions:</span>
-                <span className="text-rose-500">-${totalDiscount.toFixed(2)}</span>
+                <span className="text-rose-500">-{currency}{totalDiscount.toFixed(2)}</span>
               </div>
               <div className="flex justify-between font-bold text-slate-800 dark:text-slate-100 text-sm border-t border-slate-100 dark:border-slate-800/80 pt-2">
                 <span>Net Payable Amount:</span>
-                <span className="text-emerald-500">${netPayable.toFixed(2)}</span>
+                <span className="text-emerald-500">{currency}{netPayable.toFixed(2)}</span>
               </div>
             </div>
 
@@ -495,8 +551,8 @@ export default function SalesPOSPage() {
                     <div className="truncate max-w-[150px]">
                       {item.batch?.medicine?.name || "Medicine"} <span className="text-[9px] text-slate-400">[{item.batch?.batch_number}]</span>
                     </div>
-                    <span>{item.quantity} * ${item.unit_price.toFixed(2)}</span>
-                    <span>${item.net_amount.toFixed(2)}</span>
+                    <span>{item.quantity} * {currency}{item.unit_price.toFixed(2)}</span>
+                    <span>{currency}{item.net_amount.toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -505,15 +561,15 @@ export default function SalesPOSPage() {
               <div className="border-t border-dashed border-slate-200 dark:border-slate-800 pt-2 space-y-1 text-right font-bold">
                 <div className="flex justify-between text-slate-450">
                   <span>Gross Subtotal:</span>
-                  <span>${checkoutResult.total_amount.toFixed(2)}</span>
+                  <span>{currency}{checkoutResult.total_amount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-slate-450">
                   <span>Total Discount:</span>
-                  <span>-${checkoutResult.discount_amount.toFixed(2)}</span>
+                  <span>-{currency}{checkoutResult.discount_amount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-slate-900 dark:text-slate-50 border-t border-slate-200 dark:border-slate-800 pt-1 text-sm">
                   <span>Net Paid:</span>
-                  <span>${checkoutResult.net_amount.toFixed(2)}</span>
+                  <span>{currency}{checkoutResult.net_amount.toFixed(2)}</span>
                 </div>
               </div>
             </div>

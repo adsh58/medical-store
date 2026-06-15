@@ -400,3 +400,58 @@ class DeadStockResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ==========================================
+# 13. ADDITIONAL SCHEMAS FOR UPDATES & CRUD
+# ==========================================
+class MedicineUpdate(BaseModel):
+    category_id: Optional[uuid.UUID] = None
+    name: Optional[str] = None
+    generic_name: Optional[str] = None
+    company: Optional[str] = None
+    pack_size: Optional[str] = None
+    mrp: Optional[float] = Field(None, gt=0)
+    current_purchase_rate: Optional[float] = Field(None, gt=0)
+    doctor_selling_rate: Optional[float] = Field(None, gt=0)
+    customer_selling_rate: Optional[float] = Field(None, gt=0)
+
+
+class UserUpdate(BaseModel):
+    email: EmailStr
+    full_name: str
+    password: Optional[str] = None
+
+
+class CustomerCreate(BaseModel):
+    name: str
+    phone: str
+    email: Optional[EmailStr] = None
+    address: Optional[str] = None
+
+
+class CustomerResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    phone: str
+    email: Optional[EmailStr] = None
+    address: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SystemSettingResponse(BaseModel):
+    id: uuid.UUID
+    store_name: str
+    currency: str
+    customer_margin: float
+    doctor_margin: float
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SystemSettingUpdate(BaseModel):
+    store_name: Optional[str] = None
+    currency: Optional[str] = None
+    customer_margin: Optional[float] = None
+    doctor_margin: Optional[float] = None
+
+
+

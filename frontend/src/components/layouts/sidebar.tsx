@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Pill, PlusCircle, Package, 
   FileSpreadsheet, UploadCloud, Grid, AlertTriangle, 
   BarChart3, Settings, LogOut, ShieldAlert, Sparkles,
-  ShoppingCart
+  ShoppingCart, Tag, UserCheck, Users
 } from "lucide-react";
 
 interface SidebarProps {
@@ -26,6 +26,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     { name: "AI Assistant", href: "/assistant", icon: Sparkles },
     { name: "Medicines", href: "/medicines", icon: Pill },
     { name: "Add Medicine", href: "/medicines/add", icon: PlusCircle },
+    { name: "Categories", href: "/categories", icon: Tag },
+    { name: "Doctors", href: "/doctors", icon: UserCheck },
+    { name: "Customers", href: "/customers", icon: Users },
     { name: "Inventory", href: "/inventory", icon: Package },
     { name: "Purchase Invoices", href: "/purchases", icon: FileSpreadsheet },
     { name: "Upload Invoice", href: "/purchases/upload", icon: UploadCloud },

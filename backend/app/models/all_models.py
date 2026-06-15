@@ -446,3 +446,33 @@ class StockMovement(Base):
     batch: Mapped["Batch"] = relationship("Batch")
     user: Mapped[Optional["User"]] = relationship("User")
 
+
+# ==========================================
+# 11. SYSTEM SETTINGS & CUSTOMERS
+# ==========================================
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_name: Mapped[str] = mapped_column(String(255), default="Alpha Pharmacy", nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="$", nullable=False)  # ₹, $, €, £
+    customer_margin: Mapped[float] = mapped_column(Numeric(5, 2), default=30.0, nullable=False)
+    doctor_margin: Mapped[float] = mapped_column(Numeric(5, 2), default=15.0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class Customer(Base):
+    __tablename__ = "customers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+

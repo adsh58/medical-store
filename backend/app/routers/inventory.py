@@ -23,10 +23,11 @@ async def list_stock(
     """
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
-    from app.models.all_models import Stock, Batch
+    from app.models.all_models import Stock, Batch, MedicineLocationMapping, Box, Shelf, Rack
     # Query with eager loading to resolve nested schemas
     query = select(Stock).filter(Stock.deleted_at == None).offset(skip).limit(limit).options(
-        selectinload(Stock.batch).selectinload(Batch.medicine)
+        selectinload(Stock.batch).selectinload(Batch.medicine),
+        selectinload(Stock.batch).selectinload(Batch.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
     )
     res = await db.execute(query)
     return list(res.scalars().all())
@@ -65,9 +66,10 @@ async def adjust_stock(
     # Reload stock with batch and medicine relations populated
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
-    from app.models.all_models import Stock, Batch
+    from app.models.all_models import Stock, Batch, MedicineLocationMapping, Box, Shelf, Rack
     query = select(Stock).filter(Stock.id == stock.id).options(
-        selectinload(Stock.batch).selectinload(Batch.medicine)
+        selectinload(Stock.batch).selectinload(Batch.medicine),
+        selectinload(Stock.batch).selectinload(Batch.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
     )
     res = await db.execute(query)
     return res.scalars().first()

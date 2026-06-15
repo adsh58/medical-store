@@ -10,7 +10,7 @@ from app.models.all_models import (
     Agency, PurchaseInvoice, PurchaseInvoiceItem, Batch, Stock,
     MedicineLocationMapping, Sales, SaleItem, PriceHistory,
     PurchaseHistory, InventoryIntelligence, ExpiryTracking,
-    AIInvoiceProcessingLog, StockMovement
+    AIInvoiceProcessingLog, StockMovement, SystemSetting, Customer
 )
 
 # ==========================================
@@ -170,6 +170,28 @@ class BatchRepository(BaseRepository[Batch]):
         result = await db.execute(query)
         return result.scalars().first()
 
+    async def get(self, db: AsyncSession, id: uuid.UUID) -> Optional[Batch]:
+        from sqlalchemy.orm import selectinload
+        query = select(self.model).filter(
+            self.model.id == id,
+            self.model.deleted_at == None
+        ).options(
+            selectinload(self.model.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
+        )
+        result = await db.execute(query)
+        return result.scalars().first()
+
+    async def get_multi(self, db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Batch]:
+        from sqlalchemy.orm import selectinload
+        query = select(self.model).filter(
+            self.model.deleted_at == None
+        ).options(
+            selectinload(self.model.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
+        ).offset(skip).limit(limit)
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+
 class StockRepository(BaseRepository[Stock]):
     async def get_by_batch(self, db: AsyncSession, batch_id: uuid.UUID) -> Optional[Stock]:
         query = select(self.model).filter(self.model.batch_id == batch_id, self.model.deleted_at == None)
@@ -178,10 +200,14 @@ class StockRepository(BaseRepository[Stock]):
 
     async def get_low_stock(self, db: AsyncSession) -> List[Stock]:
         from sqlalchemy.orm import selectinload
+        from app.models.all_models import MedicineLocationMapping, Box, Shelf, Rack
         query = select(self.model).filter(
             self.model.current_stock <= self.model.reorder_level,
             self.model.deleted_at == None
-        ).options(selectinload(self.model.batch).selectinload(Batch.medicine))
+        ).options(
+            selectinload(self.model.batch).selectinload(Batch.medicine),
+            selectinload(self.model.batch).selectinload(Batch.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
+        )
         result = await db.execute(query)
         return list(result.scalars().all())
 
@@ -284,3 +310,44 @@ class StockMovementRepository(BaseRepository[StockMovement]):
         return list(result.scalars().all())
 
 stock_movement_repo = StockMovementRepository(StockMovement)
+
+
+class CustomerRepository(BaseRepository[Customer]):
+    async def get_by_phone(self, db: AsyncSession, phone: str) -> Optional[Customer]:
+        query = select(self.model).filter(self.model.phone == phone, self.model.deleted_at == None)
+        result = await db.execute(query)
+        return result.scalars().first()
+
+    async def search(self, db: AsyncSession, query_str: str, limit: int = 10) -> List[Customer]:
+        from sqlalchemy import or_
+        query = select(self.model).filter(
+            self.model.deleted_at == None,
+            or_(
+                self.model.name.ilike(f"%{query_str}%"),
+                self.model.phone.ilike(f"%{query_str}%")
+            )
+        ).limit(limit)
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+
+class SystemSettingRepository(BaseRepository[SystemSetting]):
+    async def get_singleton(self, db: AsyncSession) -> SystemSetting:
+        query = select(self.model)
+        result = await db.execute(query)
+        setting = result.scalars().first()
+        if not setting:
+            setting = self.model(
+                store_name="Alpha Pharmacy",
+                currency="$",
+                customer_margin=30.0,
+                doctor_margin=15.0
+            )
+            db.add(setting)
+            await db.flush()
+        return setting
+
+
+customer_repo = CustomerRepository(Customer)
+setting_repo = SystemSettingRepository(SystemSetting)
+

@@ -29,9 +29,10 @@ async def create_sale(
     # Reload with items relation
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
-    from app.models.all_models import Sales, SaleItem, Batch
+    from app.models.all_models import Sales, SaleItem, Batch, MedicineLocationMapping, Box, Shelf, Rack
     query = select(Sales).filter(Sales.id == sale.id).options(
-        selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.medicine)
+        selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.medicine),
+        selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
     )
     res = await db.execute(query)
     return res.scalars().first()
@@ -47,9 +48,10 @@ async def list_sales(
     """
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
-    from app.models.all_models import Sales, SaleItem, Batch
+    from app.models.all_models import Sales, SaleItem, Batch, MedicineLocationMapping, Box, Shelf, Rack
     query = select(Sales).offset(skip).limit(limit).options(
-        selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.medicine)
+        selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.medicine),
+        selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
     )
     res = await db.execute(query)
     return list(res.scalars().all())
@@ -61,9 +63,10 @@ async def get_sale(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
-    from app.models.all_models import Sales, SaleItem, Batch
+    from app.models.all_models import Sales, SaleItem, Batch, MedicineLocationMapping, Box, Shelf, Rack
     query = select(Sales).filter(Sales.id == id).options(
-        selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.medicine)
+        selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.medicine),
+        selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
     )
     res = await db.execute(query)
     sale = res.scalars().first()

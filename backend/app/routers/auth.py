@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, status, Header
+from fastapi import APIRouter, Depends, status, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
+import uuid
 from app.database import get_db
-from app.schemas.all_schemas import UserCreate, UserLogin, Token, UserResponse
+from app.schemas.all_schemas import UserCreate, UserLogin, Token, UserResponse, UserUpdate
 from app.services.all_services import auth_service
 from app.core.dependencies import get_current_user
 from app.models.all_models import User, Role
@@ -71,11 +72,87 @@ async def refresh_token(
     return Token(access_token=new_access, refresh_token=new_refresh)
 
 @router.get("/doctors", response_model=List[UserResponse])
-async def list_doctors(db: AsyncSession = Depends(get_db)):
+async def list_doctors(
+    search: Optional[str] = Query(None, description="Search doctors by name or email"),
+    db: AsyncSession = Depends(get_db)
+):
     """
     List all active doctors in the store registry.
     """
     from sqlalchemy.future import select
-    query = select(User).join(Role).filter(Role.name == "DOCTOR", User.is_active == True)
+    from sqlalchemy import or_
+    from sqlalchemy.orm import selectinload
+    query = select(User).join(Role).filter(Role.name == "DOCTOR", User.deleted_at == None)
+    if search:
+        query = query.filter(
+            or_(
+                User.full_name.ilike(f"%{search}%"),
+                User.email.ilike(f"%{search}%")
+            )
+        )
+    query = query.options(selectinload(User.role))
     res = await db.execute(query)
     return list(res.scalars().all())
+
+@router.post("/doctors", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def create_doctor(
+    doctor_in: UserCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Create a new doctor.
+    """
+    doctor_in.role_name = "DOCTOR"
+    user = await auth_service.register_user(db, doctor_in)
+    await db.commit()
+    return user
+
+@router.put("/doctors/{id}", response_model=UserResponse)
+async def update_doctor(
+    id: uuid.UUID,
+    doctor_in: UserUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update doctor details.
+    """
+    from app.repositories.all_repos import user_repo
+    from app.core.exceptions import NotFoundException
+    user = await user_repo.get(db, id)
+    if not user:
+        raise NotFoundException("Doctor not found")
+    
+    update_data = {
+        "full_name": doctor_in.full_name,
+        "email": doctor_in.email,
+    }
+    if doctor_in.password:
+        from app.core.security import hash_password
+        update_data["password_hash"] = hash_password(doctor_in.password)
+        
+    updated_user = await user_repo.update(db, db_obj=user, obj_in=update_data)
+    await db.commit()
+    
+    from sqlalchemy.orm import selectinload
+    from sqlalchemy.future import select
+    query = select(User).filter(User.id == updated_user.id).options(selectinload(User.role))
+    res = await db.execute(query)
+    return res.scalars().first()
+
+@router.delete("/doctors/{id}")
+async def delete_doctor(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete doctor record.
+    """
+    from app.repositories.all_repos import user_repo
+    from app.core.exceptions import NotFoundException
+    user = await user_repo.get(db, id)
+    if not user:
+        raise NotFoundException("Doctor not found")
+    await user_repo.remove(db, id=id)
+    await db.commit()
+    return {"success": True, "message": "Doctor deleted successfully"}
+

@@ -30,7 +30,7 @@ export default function AddMedicinePage() {
   // Queries
   const { data: categories } = useQuery<MedicineCategory[]>({
     queryKey: ["categories"],
-    queryFn: () => apiClient.get("/api/v1/medicines/categories").then(res => res.data).catch(() => [
+    queryFn: () => apiClient.get("/medicines/categories").then(res => res.data).catch(() => [
       // Fallback categories if none seeded
       { id: "1", name: "Tablet", created_at: "" },
       { id: "2", name: "Syrup", created_at: "" },

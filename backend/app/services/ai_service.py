@@ -88,9 +88,6 @@ class AIService:
                     "data": file_bytes
                 }
                 
-                # Setup structured generation configuration using gemini-1.5-flash
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                
                 prompt = (
                     "Analyze this invoice image/document carefully. "
                     "Extract all medicine line items including medicine name, batch number, "
@@ -98,14 +95,27 @@ class AIService:
                     "Ensure dates are strictly in YYYY-MM-DD format."
                 )
 
-                response = model.generate_content(
-                    [prompt, media_part],
-                    generation_config=genai.GenerationConfig(
-                        response_mime_type="application/json",
-                        response_schema=ExtractedInvoice,
-                        temperature=0.0
-                    )
-                )
+                response = None
+                errors = []
+                for model_name in ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-1.0-pro"]:
+                    try:
+                        logger.info(f"Attempting content generation using: {model_name}")
+                        model = genai.GenerativeModel(model_name)
+                        response = model.generate_content(
+                            [prompt, media_part],
+                            generation_config=genai.GenerationConfig(
+                                response_mime_type="application/json",
+                                response_schema=ExtractedInvoice,
+                                temperature=0.0
+                            )
+                        )
+                        break
+                    except Exception as e:
+                        logger.warning(f"Content generation failed with model {model_name}: {str(e)}")
+                        errors.append(f"{model_name}: {str(e)}")
+                
+                if response is None:
+                    raise BadRequestException(f"AI Extraction failed on all fallback models: {'; '.join(errors)}")
 
                 # Parsed schema validation
                 extracted_invoice = ExtractedInvoice.model_validate_json(response.text)

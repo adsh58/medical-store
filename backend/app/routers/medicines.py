@@ -6,15 +6,102 @@ import uuid
 from app.database import get_db
 from app.schemas.all_schemas import (
     MedicineCreate, MedicineResponse, PriceHistoryResponse,
-    AssistantSearchRequest, AssistantSearchResponse
+    AssistantSearchRequest, AssistantSearchResponse, MedicineUpdate,
+    MedicineCategoryCreate, MedicineCategoryResponse
 )
 from app.services.all_services import medicine_service
 from app.services.ai_service import ai_service
-from app.repositories.all_repos import medicine_repo, price_history_repo
+from app.repositories.all_repos import medicine_repo, price_history_repo, category_repo
 from app.core.dependencies import RoleChecker, get_current_user
 from app.core.exceptions import NotFoundException
 
 router = APIRouter(prefix="/medicines", tags=["Medicines Management"])
+
+
+@router.post("/categories", response_model=MedicineCategoryResponse, status_code=status.HTTP_201_CREATED)
+async def create_category(
+    category_in: MedicineCategoryCreate,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+):
+    from app.core.exceptions import BadRequestException
+    existing = await category_repo.get_by_name(db, category_in.name)
+    if existing:
+        raise BadRequestException("Category with this name already exists")
+    cat = await category_repo.create(db, obj_in=category_in.model_dump())
+    await db.commit()
+    return cat
+
+@router.get("/categories", response_model=List[MedicineCategoryResponse])
+async def list_categories(
+    search: Optional[str] = Query(None, description="Search category name or description"),
+    db: AsyncSession = Depends(get_db)
+):
+    if search:
+        from sqlalchemy import or_
+        from sqlalchemy.future import select
+        from app.models.all_models import MedicineCategory
+        query = select(MedicineCategory).filter(
+            MedicineCategory.deleted_at == None,
+            or_(
+                MedicineCategory.name.ilike(f"%{search}%"),
+                MedicineCategory.description.ilike(f"%{search}%")
+            )
+        )
+        res = await db.execute(query)
+        return list(res.scalars().all())
+    
+    return await category_repo.get_multi(db, limit=1000)
+
+@router.put("/categories/{id}", response_model=MedicineCategoryResponse)
+async def update_category(
+    id: uuid.UUID,
+    category_in: MedicineCategoryCreate,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+):
+    from app.core.exceptions import BadRequestException
+    cat = await category_repo.get(db, id)
+    if not cat:
+        raise NotFoundException("Category not found")
+    
+    if category_in.name and category_in.name != cat.name:
+        existing = await category_repo.get_by_name(db, category_in.name)
+        if existing:
+            raise BadRequestException("Category with this name already exists")
+            
+    cat = await category_repo.update(db, db_obj=cat, obj_in=category_in.model_dump())
+    await db.commit()
+    return cat
+
+@router.delete("/categories/{id}")
+async def delete_category(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+):
+    cat = await category_repo.get(db, id)
+    if not cat:
+        raise NotFoundException("Category not found")
+    await category_repo.remove(db, id=id)
+    await db.commit()
+    return {"success": True, "message": "Category deleted successfully"}
+
+
+@router.put("/{id}", response_model=MedicineResponse)
+async def update_medicine(
+    id: uuid.UUID,
+    medicine_in: MedicineUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    checker = RoleChecker(["ADMIN", "MANAGER"])
+    checker(current_user)
+    
+    med = await medicine_service.update_medicine(db, id, medicine_in, current_user.id)
+    await db.commit()
+    return await medicine_repo.get(db, med.id)
+
 
 @router.post("/", response_model=MedicineResponse, status_code=status.HTTP_201_CREATED)
 async def create_medicine(

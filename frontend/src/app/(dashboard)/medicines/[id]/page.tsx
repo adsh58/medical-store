@@ -24,6 +24,13 @@ interface PriceHistoryEntry {
 export default function MedicineDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
 
+  // Dynamic currency query
+  const { data: settingsData } = useQuery<any>({
+    queryKey: ["system-settings"],
+    queryFn: () => apiClient.get("/settings").then(res => res.data)
+  });
+  const currency = settingsData?.currency || "$";
+
   // Queries
   const { data: medicine, isLoading: loadingMed, error: medError } = useQuery<Medicine>({
     queryKey: ["medicine-detail", id],
@@ -103,19 +110,19 @@ export default function MedicineDetailsPage({ params }: { params: Promise<{ id: 
           <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
             <div className="py-2.5 flex justify-between">
               <span className="text-slate-500">Retail Customer Rate:</span>
-              <strong className="text-emerald-500 text-sm">${medicine.customer_selling_rate.toFixed(2)}</strong>
+              <strong className="text-emerald-500 text-sm">{currency}{medicine.customer_selling_rate.toFixed(2)}</strong>
             </div>
             <div className="py-2.5 flex justify-between">
               <span className="text-slate-500">Doctor Rate:</span>
-              <strong className="text-slate-800 dark:text-slate-200 text-sm">${medicine.doctor_selling_rate.toFixed(2)}</strong>
+              <strong className="text-slate-800 dark:text-slate-200 text-sm">{currency}{medicine.doctor_selling_rate.toFixed(2)}</strong>
             </div>
             <div className="py-2.5 flex justify-between">
               <span className="text-slate-500">Current Purchase Rate:</span>
-              <strong className="text-slate-850 dark:text-slate-350">${medicine.current_purchase_rate.toFixed(2)}</strong>
+              <strong className="text-slate-850 dark:text-slate-350">{currency}{medicine.current_purchase_rate.toFixed(2)}</strong>
             </div>
             <div className="py-2.5 flex justify-between">
               <span className="text-slate-500">Maximum Retail Price (MRP):</span>
-              <strong className="text-slate-700 dark:text-slate-200">${medicine.mrp.toFixed(2)}</strong>
+              <strong className="text-slate-700 dark:text-slate-200">{currency}{medicine.mrp.toFixed(2)}</strong>
             </div>
             <div className="py-2.5 flex justify-between">
               <span className="text-slate-500">Standard Pack Size:</span>
@@ -258,10 +265,10 @@ export default function MedicineDetailsPage({ params }: { params: Promise<{ id: 
                         {new Date(history.changed_at).toLocaleString()}
                       </td>
                       <td className="py-3 font-medium text-slate-750 dark:text-slate-200">
-                        ${history.old_customer_rate.toFixed(2)} → <strong className="text-emerald-600 dark:text-emerald-400">${history.new_customer_rate.toFixed(2)}</strong>
+                        {currency}{history.old_customer_rate.toFixed(2)} → <strong className="text-emerald-600 dark:text-emerald-400">{currency}{history.new_customer_rate.toFixed(2)}</strong>
                       </td>
                       <td className="py-3 font-medium text-slate-750 dark:text-slate-200">
-                        ${history.old_doctor_rate.toFixed(2)} → <strong>${history.new_doctor_rate.toFixed(2)}</strong>
+                        {currency}{history.old_doctor_rate.toFixed(2)} → <strong>{currency}{history.new_doctor_rate.toFixed(2)}</strong>
                       </td>
                       <td className="py-3 font-medium text-slate-500 flex items-center gap-1">
                         <User className="h-3 w-3 text-slate-400" />

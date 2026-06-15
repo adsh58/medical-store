@@ -11,6 +11,13 @@ export default function MedicinesPage() {
   const [search, setSearch] = useState<string>("");
   const [expandedMeds, setExpandedMeds] = useState<Record<string, boolean>>({});
 
+  // Dynamic currency query
+  const { data: settingsData } = useQuery<any>({
+    queryKey: ["system-settings"],
+    queryFn: () => apiClient.get("/settings").then(res => res.data)
+  });
+  const currency = settingsData?.currency || "$";
+
   const toggleExpand = (id: string) => {
     setExpandedMeds(prev => ({ ...prev, [id]: !prev[id] }));
   };
@@ -115,10 +122,10 @@ export default function MedicinesPage() {
                         </td>
                         <td className="px-6 py-4 text-slate-600 dark:text-slate-350">{med.company}</td>
                         <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-300">{med.pack_size}</td>
-                        <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200">${med.mrp.toFixed(2)}</td>
-                        <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-450">${med.current_purchase_rate.toFixed(2)}</td>
-                        <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-200">${med.doctor_selling_rate.toFixed(2)}</td>
-                        <td className="px-6 py-4 font-semibold text-emerald-600 dark:text-emerald-400">${med.customer_selling_rate.toFixed(2)}</td>
+                        <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200">{currency}{med.mrp.toFixed(2)}</td>
+                        <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-450">{currency}{med.current_purchase_rate.toFixed(2)}</td>
+                        <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-200">{currency}{med.doctor_selling_rate.toFixed(2)}</td>
+                        <td className="px-6 py-4 font-semibold text-emerald-600 dark:text-emerald-400">{currency}{med.customer_selling_rate.toFixed(2)}</td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <button
