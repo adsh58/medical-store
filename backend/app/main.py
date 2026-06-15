@@ -8,7 +8,8 @@ from app.core.logging import setup_logging
 from app.core.exceptions import register_exception_handlers
 from app.database import engine, AsyncSessionLocal
 
-from app.routers import auth, medicines, agencies, purchase, inventory, racks, sales, alerts, intelligence, customers, settings
+from app.routers import auth, medicines, agencies, purchase, inventory, racks, sales, alerts, intelligence, customers
+from app.routers.settings import router as settings_router
 
 logger = logging.getLogger("app.main")
 
@@ -152,7 +153,7 @@ app.include_router(sales.router, prefix="/api/v1")
 app.include_router(alerts.router, prefix="/api/v1")
 app.include_router(intelligence.router, prefix="/api/v1")
 app.include_router(customers.router, prefix="/api/v1")
-app.include_router(settings.router, prefix="/api/v1")
+app.include_router(settings_router, prefix="/api/v1")
 
 @app.get("/health", tags=["Health Checker"])
 async def health():
