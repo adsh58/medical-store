@@ -11,6 +11,8 @@ export default function RackManagementPage() {
   const [newRackName, setNewRackName] = useState<string>("");
   const [newShelfName, setNewShelfName] = useState<string>("");
   const [selectedRackId, setSelectedRackId] = useState<string | null>(null);
+  const [newBoxName, setNewBoxName] = useState<string>("");
+  const [selectedShelfId, setSelectedShelfId] = useState<string | null>(null);
 
   // Queries
   const { data: racks, isLoading, refetch } = useQuery<Rack[]>({
@@ -69,6 +71,24 @@ export default function RackManagementPage() {
     addShelfMutation.mutate({ rack_id: selectedRackId, name: newShelfName });
   };
 
+  const addBoxMutation = useMutation({
+    mutationFn: (data: { shelf_id: string; name: string }) => apiClient.post("/racks/boxes", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["racks"] });
+      setNewBoxName("");
+      setSelectedShelfId(null);
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error || "Failed to create box");
+    }
+  });
+
+  const handleAddBox = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBoxName || !selectedShelfId) return;
+    addBoxMutation.mutate({ shelf_id: selectedShelfId, name: newBoxName });
+  };
+
   return (
     <div className="space-y-6">
       {/* Title */}
@@ -124,6 +144,15 @@ export default function RackManagementPage() {
                           <span className="text-[10px] text-slate-400 mt-1">
                             {shelf.boxes?.length || 0} boxes allocated
                           </span>
+                          <button
+                            onClick={() => {
+                              setSelectedShelfId(shelf.id);
+                              setSelectedRackId(null);
+                            }}
+                            className="mt-2 text-[10px] font-semibold text-emerald-500 hover:text-emerald-450"
+                          >
+                            + Add Box
+                          </button>
                         </div>
                       ))
                     ) : (
@@ -195,6 +224,39 @@ export default function RackManagementPage() {
                 >
                   <FolderPlus className="h-3.5 w-3.5" />
                   Append Shelf Location
+                </button>
+              </form>
+            </div>
+          )}
+
+          {selectedShelfId && (
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/5 p-5 shadow-sm dark:bg-slate-900 dark:border-slate-800/80">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xs font-bold text-emerald-600 dark:text-emerald-450 uppercase tracking-wider">
+                  Add Box to Shelf
+                </h2>
+                <button
+                  onClick={() => setSelectedShelfId(null)}
+                  className="text-[10px] text-slate-400 hover:text-slate-200"
+                >
+                  Cancel
+                </button>
+              </div>
+              <form onSubmit={handleAddBox} className="space-y-3">
+                <input
+                  type="text"
+                  value={newBoxName}
+                  onChange={(e) => setNewBoxName(e.target.value)}
+                  placeholder="e.g. Box 1, Box 2"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="flex w-full items-center justify-center gap-1 rounded-lg bg-emerald-650 py-2 text-xs font-semibold text-white hover:bg-emerald-600"
+                >
+                  <FolderPlus className="h-3.5 w-3.5" />
+                  Append Box Location
                 </button>
               </form>
             </div>

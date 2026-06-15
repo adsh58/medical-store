@@ -1,15 +1,32 @@
 "use client";
 
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Search, Plus, Pill, RefreshCw, Eye, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, Plus, Pill, RefreshCw, Eye, ChevronDown, ChevronUp, Edit, Trash2 } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { Medicine } from "@/types";
 
 export default function MedicinesPage() {
-  const [search, setSearch] = useState<string>("");
+  const [search, setSearch] = useState<string>( "");
   const [expandedMeds, setExpandedMeds] = useState<Record<string, boolean>>({});
+  const queryClient = useQueryClient();
+
+  const deleteMedicineMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/medicines/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["medicines"] });
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error || "Failed to delete medicine.");
+    }
+  });
+
+  const handleDeleteMedicine = (id: string) => {
+    if (confirm("Are you sure you want to delete this medicine from the catalog?")) {
+      deleteMedicineMutation.mutate(id);
+    }
+  };
 
   // Dynamic currency query
   const { data: settingsData } = useQuery<any>({
@@ -136,11 +153,26 @@ export default function MedicinesPage() {
                             </button>
                             <Link
                               href={`/medicines/${med.id}`}
-                              className="inline-flex items-center gap-1 rounded bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                              className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                              title="View Details"
                             >
                               <Eye className="h-3 w-3" />
                               Details
                             </Link>
+                            <Link
+                              href={`/medicines/edit/${med.id}`}
+                              className="inline-flex items-center gap-1 rounded bg-slate-100 p-1.5 text-xs font-semibold text-blue-650 hover:bg-blue-50 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                              title="Edit Medicine"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </Link>
+                            <button
+                              onClick={() => handleDeleteMedicine(med.id)}
+                              className="inline-flex items-center gap-1 rounded bg-slate-100 p-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:bg-slate-800 dark:text-rose-450 dark:hover:bg-rose-950/30"
+                              title="Delete Medicine"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
                           </div>
                         </td>
                       </tr>

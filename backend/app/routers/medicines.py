@@ -14,6 +14,7 @@ from app.services.ai_service import ai_service
 from app.repositories.all_repos import medicine_repo, price_history_repo, category_repo
 from app.core.dependencies import RoleChecker, get_current_user
 from app.core.exceptions import NotFoundException
+from app.core.cache import query_cache
 
 router = APIRouter(prefix="/medicines", tags=["Medicines Management"])
 
@@ -30,6 +31,7 @@ async def create_category(
         raise BadRequestException("Category with this name already exists")
     cat = await category_repo.create(db, obj_in=category_in.model_dump())
     await db.commit()
+    query_cache.delete("categories:list")
     return cat
 
 @router.get("/categories", response_model=List[MedicineCategoryResponse])
@@ -37,6 +39,11 @@ async def list_categories(
     search: Optional[str] = Query(None, description="Search category name or description"),
     db: AsyncSession = Depends(get_db)
 ):
+    cache_key = f"categories:list:{search or 'all'}"
+    cached = query_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     if search:
         from sqlalchemy import or_
         from sqlalchemy.future import select
@@ -49,9 +56,13 @@ async def list_categories(
             )
         )
         res = await db.execute(query)
-        return list(res.scalars().all())
-    
-    return await category_repo.get_multi(db, limit=1000)
+        cats = list(res.scalars().all())
+    else:
+        cats = await category_repo.get_multi(db, limit=1000)
+        
+    res_data = [MedicineCategoryResponse.model_validate(c) for c in cats]
+    query_cache.set(cache_key, res_data)
+    return res_data
 
 @router.put("/categories/{id}", response_model=MedicineCategoryResponse)
 async def update_category(
@@ -72,6 +83,7 @@ async def update_category(
             
     cat = await category_repo.update(db, db_obj=cat, obj_in=category_in.model_dump())
     await db.commit()
+    query_cache.delete("categories:list")
     return cat
 
 @router.delete("/categories/{id}")
@@ -85,6 +97,7 @@ async def delete_category(
         raise NotFoundException("Category not found")
     await category_repo.remove(db, id=id)
     await db.commit()
+    query_cache.delete("categories:list")
     return {"success": True, "message": "Category deleted successfully"}
 
 
@@ -100,6 +113,7 @@ async def update_medicine(
     
     med = await medicine_service.update_medicine(db, id, medicine_in, current_user.id)
     await db.commit()
+    query_cache.delete("medicines:list")
     return await medicine_repo.get(db, med.id)
 
 
@@ -114,6 +128,7 @@ async def create_medicine(
     """
     med = await medicine_service.create_medicine(db, medicine_in)
     await db.commit()
+    query_cache.delete("medicines:list")
     return med
 
 @router.get("/", response_model=List[MedicineResponse])
@@ -126,9 +141,19 @@ async def list_medicines(
     """
     Retrieve paginated medicine records, optionally filtered by keyword search.
     """
+    cache_key = f"medicines:list:{search or 'all'}:{skip}:{limit}"
+    cached = query_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     if search:
-        return await medicine_repo.search(db, search, limit=limit)
-    return await medicine_repo.get_multi(db, skip=skip, limit=limit)
+        meds = await medicine_repo.search(db, search, limit=limit)
+    else:
+        meds = await medicine_repo.get_multi(db, skip=skip, limit=limit)
+        
+    res_data = [MedicineResponse.model_validate(m) for m in meds]
+    query_cache.set(cache_key, res_data)
+    return res_data
 
 @router.get("/{id}", response_model=MedicineResponse)
 async def get_medicine(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
@@ -139,6 +164,23 @@ async def get_medicine(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     if not med:
         raise NotFoundException("Medicine not found")
     return med
+
+@router.delete("/{id}")
+async def delete_medicine(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+):
+    """
+    Soft-delete a medicine record by ID.
+    """
+    med = await medicine_repo.get(db, id)
+    if not med:
+        raise NotFoundException("Medicine not found")
+    await medicine_repo.remove(db, id=id)
+    await db.commit()
+    query_cache.delete("medicines:list")
+    return {"success": True, "message": "Medicine deleted successfully"}
 
 @router.get("/{id}/price-history", response_model=List[PriceHistoryResponse])
 async def get_price_history(id: uuid.UUID, db: AsyncSession = Depends(get_db)):

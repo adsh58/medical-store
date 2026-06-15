@@ -200,7 +200,7 @@ export default function CustomersPage() {
             <button
               type="submit"
               disabled={createMutation.isPending}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2 text-xs font-semibold text-white hover:bg-emerald-50 transition-colors"
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
               {createMutation.isPending ? "Registering..." : "Register Customer"}
@@ -245,7 +245,7 @@ export default function CustomersPage() {
                       const isEditing = editingId === cust.id;
                       return (
                         <tr key={cust.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/10">
-                          <td className="px-6 py-4 font-semibold text-slate-900 dark:text-slate-150">
+                          <td className="px-6 py-4 font-semibold text-slate-900 dark:text-slate-200">
                             {isEditing ? (
                               <input
                                 type="text"

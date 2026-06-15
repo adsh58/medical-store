@@ -5,31 +5,40 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { 
   Pill, Package, AlertTriangle, ArrowUpRight, 
-  TrendingUp, CircleAlert, Sparkles, FileSpreadsheet
+  TrendingUp, CircleAlert, Sparkles, FileSpreadsheet,
+  UserCheck
 } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { Medicine, Stock, ExpiryAlert, Sale } from "@/types";
+import { useAuth } from "@/context/AuthContext";
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const isDoctor = user?.role?.name?.toUpperCase() === "DOCTOR";
+
   // Queries
   const { data: medicines } = useQuery<Medicine[]>({
     queryKey: ["medicines"],
-    queryFn: () => apiClient.get("/medicines").then(res => res.data)
+    queryFn: () => apiClient.get("/medicines").then(res => res.data),
+    enabled: !isDoctor
   });
 
   const { data: lowStock } = useQuery<Stock[]>({
     queryKey: ["lowStock"],
-    queryFn: () => apiClient.get("/inventory/stock/low").then(res => res.data)
+    queryFn: () => apiClient.get("/inventory/stock/low").then(res => res.data),
+    enabled: !isDoctor
   });
 
   const { data: expiryAlerts } = useQuery<ExpiryAlert[]>({
     queryKey: ["expiryAlerts"],
-    queryFn: () => apiClient.get("/alerts/expiry").then(res => res.data)
+    queryFn: () => apiClient.get("/alerts/expiry").then(res => res.data),
+    enabled: !isDoctor
   });
 
   const { data: sales } = useQuery<Sale[]>({
     queryKey: ["recentSales"],
-    queryFn: () => apiClient.get("/sales?limit=5").then(res => res.data)
+    queryFn: () => apiClient.get("/sales?limit=5").then(res => res.data),
+    enabled: !isDoctor
   });
 
   // Calculations
@@ -37,6 +46,44 @@ export default function DashboardPage() {
   const lowStockCount = lowStock?.length || 0;
   const expiryCount = expiryAlerts?.length || 0;
   const recentSales = sales || [];
+
+  if (isDoctor) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Doctor Profile Portal</h1>
+          <p className="text-sm text-slate-500">Welcome, Dr. {user?.full_name}. View your registry credentials below.</p>
+        </div>
+        <div className="max-w-xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+          <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 border-b border-slate-100 pb-3 dark:border-slate-850 flex items-center gap-1.5">
+            <UserCheck className="h-4 w-4 text-emerald-500" />
+            Personal Credentials Details
+          </h2>
+          <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-xs">
+            <span className="text-slate-500 font-medium">Doctor Name:</span>
+            <span className="font-semibold text-slate-850 dark:text-slate-200">{user?.full_name}</span>
+            
+            <span className="text-slate-500 font-medium">Registration Email:</span>
+            <span className="font-semibold text-slate-850 dark:text-slate-200">{user?.email}</span>
+            
+            <span className="text-slate-500 font-medium">System Role:</span>
+            <span className="font-semibold text-emerald-500 uppercase">{user?.role?.name}</span>
+            
+            <span className="text-slate-500 font-medium">Profile Status:</span>
+            <span className="font-semibold text-emerald-600">ACTIVE</span>
+          </div>
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-850 flex justify-end">
+            <Link 
+              href="/settings" 
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-emerald-500"
+            >
+              Manage Password & Settings
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

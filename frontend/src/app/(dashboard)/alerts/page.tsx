@@ -87,7 +87,7 @@ export default function ExpiryAlertsPage() {
                     <AlertTriangle className="h-5 w-5 animate-pulse" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-150">
+                    <h3 className="text-sm font-semibold text-slate-200">
                       {/* Nested medicine object loaded inside batch details */}
                       {(alert.batch as any).medicine?.name || "Paracetamol 650mg"}
                     </h3>

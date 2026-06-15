@@ -21,22 +21,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
   const { user, logout } = useAuth();
 
   const menuItems = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    { name: "POS Sales", href: "/sales", icon: ShoppingCart },
-    { name: "AI Assistant", href: "/assistant", icon: Sparkles },
-    { name: "Medicines", href: "/medicines", icon: Pill },
-    { name: "Add Medicine", href: "/medicines/add", icon: PlusCircle },
-    { name: "Categories", href: "/categories", icon: Tag },
-    { name: "Doctors", href: "/doctors", icon: UserCheck },
-    { name: "Customers", href: "/customers", icon: Users },
-    { name: "Inventory", href: "/inventory", icon: Package },
-    { name: "Purchase Invoices", href: "/purchases", icon: FileSpreadsheet },
-    { name: "Upload Invoice", href: "/purchases/upload", icon: UploadCloud },
-    { name: "Rack Management", href: "/racks", icon: Grid },
-    { name: "Expiry Alerts", href: "/alerts", icon: AlertTriangle },
-    { name: "Reports", href: "/reports", icon: BarChart3 },
-    { name: "Settings", href: "/settings", icon: Settings },
+    { name: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["ADMIN", "MANAGER", "CASHIER"] },
+    { name: "POS Sales", href: "/sales", icon: ShoppingCart, roles: ["ADMIN", "MANAGER", "CASHIER"] },
+    { name: "AI Assistant", href: "/assistant", icon: Sparkles, roles: ["ADMIN", "MANAGER", "CASHIER", "DOCTOR"] },
+    { name: "Medicines", href: "/medicines", icon: Pill, roles: ["ADMIN", "MANAGER"] },
+    { name: "Add Medicine", href: "/medicines/add", icon: PlusCircle, roles: ["ADMIN", "MANAGER"] },
+    { name: "Categories", href: "/categories", icon: Tag, roles: ["ADMIN", "MANAGER"] },
+    { name: "Doctors", href: "/doctors", icon: UserCheck, roles: ["ADMIN", "MANAGER"] },
+    { name: "Customers", href: "/customers", icon: Users, roles: ["ADMIN", "MANAGER"] },
+    { name: "Inventory", href: "/inventory", icon: Package, roles: ["ADMIN", "MANAGER"] },
+    { name: "Purchase Invoices", href: "/purchases", icon: FileSpreadsheet, roles: ["ADMIN", "MANAGER"] },
+    { name: "Upload Invoice", href: "/purchases/upload", icon: UploadCloud, roles: ["ADMIN", "MANAGER"] },
+    { name: "Rack Management", href: "/racks", icon: Grid, roles: ["ADMIN", "MANAGER"] },
+    { name: "Expiry Alerts", href: "/alerts", icon: AlertTriangle, roles: ["ADMIN", "MANAGER"] },
+    { name: "Reports", href: "/reports", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
+    { name: "Settings", href: "/settings", icon: Settings, roles: ["ADMIN", "MANAGER", "CASHIER", "DOCTOR"] },
   ];
+
+  const userRole = user?.role?.name?.toUpperCase() || "";
+  const filteredMenuItems = menuItems.filter(item => item.roles.includes(userRole));
 
   return (
     <>
@@ -69,7 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
           </div>
 
           <nav className="space-y-1">
-            {menuItems.map((item) => {
+            {filteredMenuItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
               return (

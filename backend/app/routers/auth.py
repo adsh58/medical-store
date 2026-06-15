@@ -7,6 +7,7 @@ from app.schemas.all_schemas import UserCreate, UserLogin, Token, UserResponse, 
 from app.services.all_services import auth_service
 from app.core.dependencies import get_current_user
 from app.models.all_models import User, Role
+from app.core.cache import query_cache
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -79,6 +80,11 @@ async def list_doctors(
     """
     List all active doctors in the store registry.
     """
+    cache_key = f"doctors:list:{search or 'all'}"
+    cached = query_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     from sqlalchemy.future import select
     from sqlalchemy import or_
     from sqlalchemy.orm import selectinload
@@ -92,7 +98,11 @@ async def list_doctors(
         )
     query = query.options(selectinload(User.role))
     res = await db.execute(query)
-    return list(res.scalars().all())
+    docs = list(res.scalars().all())
+    
+    res_data = [UserResponse.model_validate(d) for d in docs]
+    query_cache.set(cache_key, res_data)
+    return res_data
 
 @router.post("/doctors", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_doctor(
@@ -105,6 +115,7 @@ async def create_doctor(
     doctor_in.role_name = "DOCTOR"
     user = await auth_service.register_user(db, doctor_in)
     await db.commit()
+    query_cache.delete("doctors:list")
     return user
 
 @router.put("/doctors/{id}", response_model=UserResponse)
@@ -132,6 +143,7 @@ async def update_doctor(
         
     updated_user = await user_repo.update(db, db_obj=user, obj_in=update_data)
     await db.commit()
+    query_cache.delete("doctors:list")
     
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
@@ -154,5 +166,6 @@ async def delete_doctor(
         raise NotFoundException("Doctor not found")
     await user_repo.remove(db, id=id)
     await db.commit()
+    query_cache.delete("doctors:list")
     return {"success": True, "message": "Doctor deleted successfully"}
 

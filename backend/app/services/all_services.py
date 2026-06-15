@@ -64,6 +64,11 @@ class MedicineService:
         if existing:
             raise BadRequestException("Medicine with this name already exists")
         
+        from app.repositories.all_repos import category_repo
+        category = await category_repo.get(db, medicine_in.category_id)
+        if not category:
+            raise BadRequestException("Selected category does not exist")
+        
         med = await medicine_repo.create(db, obj_in=medicine_in.model_dump())
         return med
 

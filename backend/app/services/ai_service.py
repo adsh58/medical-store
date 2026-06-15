@@ -97,7 +97,7 @@ class AIService:
 
                 response = None
                 errors = []
-                for model_name in ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-1.0-pro"]:
+                for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-1.0-pro"]:
                     try:
                         logger.info(f"Attempting content generation using: {model_name}")
                         model = genai.GenerativeModel(model_name)
@@ -115,6 +115,11 @@ class AIService:
                         errors.append(f"{model_name}: {str(e)}")
                 
                 if response is None:
+                    try:
+                        available_models = [m.name for m in genai.list_models()]
+                        logger.error(f"Available models for this API key: {available_models}")
+                    except Exception as list_err:
+                        logger.error(f"Failed to list models: {str(list_err)}")
                     raise BadRequestException(f"AI Extraction failed on all fallback models: {'; '.join(errors)}")
 
                 # Parsed schema validation
