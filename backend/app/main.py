@@ -52,25 +52,36 @@ async def seed_data():
                     db.add(role)
             await db.flush()
 
-            # Check if admin user exists
-            query_admin = select(User).filter(User.email == "admin@medicalstore.com")
-            res_admin = await db.execute(query_admin)
-            admin = res_admin.scalars().first()
-            if not admin:
-                logger.info("Seeding default administrator profile...")
-                # Fetch admin role
-                query_role = select(Role).filter(Role.name == "ADMIN")
-                res_role = await db.execute(query_role)
-                admin_role = res_role.scalars().first()
-                
-                admin_user = User(
-                    email="admin@medicalstore.com",
-                    password_hash=hash_password("admin123"),
-                    full_name="System Administrator",
-                    role_id=admin_role.id,
-                    is_active=True
-                )
-                db.add(admin_user)
+            # Check if old admin exists and update/replace them, or seed new admin
+            query_old = select(User).filter(User.email == "admin@medicalstore.com")
+            res_old = await db.execute(query_old)
+            old_admin = res_old.scalars().first()
+            
+            if old_admin:
+                logger.info("Updating existing default admin account with new credentials...")
+                old_admin.email = "vishal58@medical.com"
+                old_admin.password_hash = hash_password("Vishal@5858")
+                old_admin.full_name = "System Administrator"
+            else:
+                # Seed or verify the new admin account
+                query_admin = select(User).filter(User.email == "vishal58@medical.com")
+                res_admin = await db.execute(query_admin)
+                admin = res_admin.scalars().first()
+                if not admin:
+                    logger.info("Seeding default administrator profile...")
+                    # Fetch admin role
+                    query_role = select(Role).filter(Role.name == "ADMIN")
+                    res_role = await db.execute(query_role)
+                    admin_role = res_role.scalars().first()
+                    
+                    admin_user = User(
+                        email="vishal58@medical.com",
+                        password_hash=hash_password("Vishal@5858"),
+                        full_name="System Administrator",
+                        role_id=admin_role.id,
+                        is_active=True
+                    )
+                    db.add(admin_user)
             
             # Seed default system settings
             from app.models.all_models import SystemSetting

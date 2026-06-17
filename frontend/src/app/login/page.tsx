@@ -106,13 +106,6 @@ export default function LoginPage() {
             </button>
           </form>
         </div>
-
-        {/* Demo Credentials Alert */}
-        <div className="mt-4 text-center">
-          <p className="text-[11px] text-slate-500">
-            Demo credentials: <span className="font-semibold text-slate-400">admin@medicalstore.com</span> / <span className="font-semibold text-slate-400">admin123</span>
-          </p>
-        </div>
       </div>
     </div>
   );
