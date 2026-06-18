@@ -116,13 +116,42 @@ async def upload_invoice_ai(
         for item in report.extracted_items:
             medicine = await medicine_repo.get_by_name(db, item.medicine_name)
             if not medicine:
+                # Resolve and clean pack size with regex fallback
+                extracted_pack = getattr(item, "pack_size", None)
+                if not extracted_pack or str(extracted_pack).lower() in ["ai extracted pack", "unknown", "", "null", "none"]:
+                    import re
+                    patterns = [
+                        r'\b\d+\s*[xX]\s*\d+\s*[a-zA-Z]+\b',  # e.g., 16X500ML, 25X1PCS
+                        r'\b\d+\s*[xX]\s*\d+\b',               # e.g., 10X10, 3X10
+                        r'\b\d+\s*(?:CAPS?|TABS?|PCS|ML|GM?S?|VIALS?|AMPS?|TABLETS?|CAPSULES?)\b', # e.g., 30CAP, 100ML, 15GM, 15G
+                        r'\b\d+\s*\'[sS]\b',                   # e.g., 10's, 15's
+                        r'\b\d+\s*[sS]\b'                      # e.g., 10s, 15s
+                    ]
+                    for pattern in patterns:
+                        match = re.search(pattern, item.medicine_name, re.IGNORECASE)
+                        if match:
+                            extracted_pack = match.group(0).strip().upper()
+                            break
+                    else:
+                        extracted_pack = "AI Extracted Pack"
+                
+                # Resolve and clean company name
+                extracted_company = getattr(item, "company", None)
+                if not extracted_company or str(extracted_company).lower() in ["ai extracted company", "unknown", "", "null", "none"]:
+                    extracted_company = "AI Extracted Company"
+                    
+                # Resolve and clean generic name
+                extracted_generic = getattr(item, "generic_name", None)
+                if not extracted_generic or str(extracted_generic).lower() in ["ai extracted generic", "unknown", "", "null", "none"]:
+                    extracted_generic = "AI Extracted Generic"
+
                 # Create default medicine
                 med_in = MedicineCreate(
                     category_id=category.id,
                     name=item.medicine_name,
-                    generic_name="AI Extracted Generic",
-                    company="AI Extracted Company",
-                    pack_size="AI Extracted Pack",
+                    generic_name=extracted_generic,
+                    company=extracted_company,
+                    pack_size=extracted_pack,
                     mrp=item.new_rate * 1.5,
                     current_purchase_rate=item.new_rate,
                     doctor_selling_rate=item.new_rate * 1.15,

@@ -20,6 +20,9 @@ class ExtractedInvoiceItem(BaseModel):
     expiry_date: str = Field(description="The expiry date of the medicine in YYYY-MM-DD format. If only MM/YY is given, assume last day of that month")
     quantity: int = Field(description="The quantity of the medicine purchased")
     purchase_rate: float = Field(description="The purchase rate per unit or pack size")
+    company: Optional[str] = Field(None, description="The manufacturer/company name of the medicine if available or known")
+    pack_size: Optional[str] = Field(None, description="The pack configuration or packaging unit, e.g. 10s, 16x500ml, 15g, if available or known")
+    generic_name: Optional[str] = Field(None, description="The generic active ingredient/chemical name of the medicine if available or known")
 
 class ExtractedInvoice(BaseModel):
     invoice_number: str = Field(description="The invoice number or billing number found on the invoice")
@@ -47,6 +50,9 @@ class RateComparisonItem(BaseModel):
     alert_message: Optional[str] = None
     recommended_doctor_rate: float
     recommended_customer_rate: float
+    company: Optional[str] = None
+    pack_size: Optional[str] = None
+    generic_name: Optional[str] = None
 
 class InvoiceAnalysisReport(BaseModel):
     file_name: str
@@ -92,6 +98,8 @@ class AIService:
                     "Analyze this invoice image/document carefully. "
                     "Extract all medicine line items including medicine name, batch number, "
                     "expiry date, quantity, and purchase rate. "
+                    "Additionally, try to extract the manufacturer/company name, the packaging pack size (e.g. 10s, 16x500ml, 15g), "
+                    "and the generic name / active ingredient for each medicine if they are specified or can be inferred. "
                     "Ensure dates are strictly in YYYY-MM-DD format."
                 )
 
@@ -202,7 +210,10 @@ class AIService:
                     alert_triggered=alert_triggered,
                     alert_message=alert_message,
                     recommended_doctor_rate=round(rec_doctor, 2),
-                    recommended_customer_rate=round(rec_customer, 2)
+                    recommended_customer_rate=round(rec_customer, 2),
+                    company=getattr(item, "company", None),
+                    pack_size=getattr(item, "pack_size", None),
+                    generic_name=getattr(item, "generic_name", None)
                 )
             )
 
@@ -226,11 +237,12 @@ class AIService:
         """
         Mock invoice payload modeling a standard pharmacy supplier invoice.
         """
-        invoice_number = "INV-E2E-Mock-101"
+        import time
+        invoice_number = f"INV-Mock-{int(time.time())}"
         if file_name:
             name_part = file_name.split(".")[0]
             clean_part = "".join(c for c in name_part if c.isalnum() or c in "-_")
-            invoice_number = f"INV-{clean_part}"
+            invoice_number = f"INV-{clean_part}-{int(time.time())}"
 
         return ExtractedInvoice(
             invoice_number=invoice_number,
@@ -242,21 +254,30 @@ class AIService:
                     batch_no="BATCH-PM990",
                     expiry_date="2027-12-31",
                     quantity=150,
-                    purchase_rate=12.50
+                    purchase_rate=12.50,
+                    company="Cipla Ltd",
+                    pack_size="15's",
+                    generic_name="Paracetamol"
                 ),
                 ExtractedInvoiceItem(
                     medicine_name="Amoxicillin 500mg",
                     batch_no="BATCH-AMX122",
                     expiry_date="2028-06-30",
                     quantity=80,
-                    purchase_rate=45.00
+                    purchase_rate=45.00,
+                    company="Alkem Laboratories",
+                    pack_size="10's",
+                    generic_name="Amoxicillin"
                 ),
                 ExtractedInvoiceItem(
                     medicine_name="Atorvastatin 10mg",
                     batch_no="BATCH-ATR311",
                     expiry_date="2027-09-30",
                     quantity=200,
-                    purchase_rate=78.20
+                    purchase_rate=78.20,
+                    company="Abbott India",
+                    pack_size="15's",
+                    generic_name="Atorvastatin"
                 )
             ]
         )
