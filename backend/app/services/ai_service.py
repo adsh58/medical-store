@@ -20,9 +20,9 @@ class ExtractedInvoiceItem(BaseModel):
     expiry_date: str = Field(description="The expiry date of the medicine in YYYY-MM-DD format. If only MM/YY is given, assume last day of that month")
     quantity: int = Field(description="The quantity of the medicine purchased")
     purchase_rate: float = Field(description="The purchase rate per unit or pack size")
-    company: Optional[str] = Field(None, description="The manufacturer/company name of the medicine if available or known")
-    pack_size: Optional[str] = Field(None, description="The pack configuration or packaging unit, e.g. 10s, 16x500ml, 15g, if available or known")
-    generic_name: Optional[str] = Field(None, description="The generic active ingredient/chemical name of the medicine if available or known")
+    company: str = Field(description="The manufacturer/company name of the medicine if available or known. If not present, return empty string.")
+    pack_size: str = Field(description="The pack configuration or packaging unit, e.g. 10s, 16x500ml, 15g, if available or known. If not present, return empty string.")
+    generic_name: str = Field(description="The generic active ingredient/chemical name of the medicine if available or known. If not present, return empty string.")
 
 class ExtractedInvoice(BaseModel):
     invoice_number: str = Field(description="The invoice number or billing number found on the invoice")
