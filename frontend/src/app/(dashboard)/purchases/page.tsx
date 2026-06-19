@@ -7,8 +7,10 @@ import { FileSpreadsheet, Plus, UploadCloud, RefreshCw, CheckCircle2, AlertCircl
 import apiClient from "@/lib/api-client";
 import { PurchaseInvoice } from "@/types";
 import { useState } from "react";
+import { useCurrency } from "@/hooks/useCurrency";
 
 export default function PurchaseInvoicesPage() {
+  const { formatCurrency } = useCurrency();
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 10;
 
@@ -91,7 +93,7 @@ export default function PurchaseInvoicesPage() {
                       {new Date(inv.invoice_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">
-                      ${inv.total_amount.toFixed(2)}
+                      {formatCurrency(inv.total_amount)}
                     </td>
                     <td className="px-6 py-4">
                       {inv.ai_status === "COMPLETED" ? (

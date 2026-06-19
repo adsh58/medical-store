@@ -6,8 +6,10 @@ import { Search, Sparkles, Pill, AlertCircle, HelpCircle, ArrowRight } from "luc
 import apiClient from "@/lib/api-client";
 import { AssistantSearchItem } from "@/types";
 import Link from "next/link";
+import { useCurrency } from "@/hooks/useCurrency";
 
 export default function SearchAssistantPage() {
+  const { formatCurrency } = useCurrency();
   const [query, setQuery] = useState<string>("");
   const [results, setResults] = useState<AssistantSearchItem[]>([]);
 
@@ -189,7 +191,7 @@ export default function SearchAssistantPage() {
                   <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
                     <div>
                       <p className="text-[10px] text-slate-400 uppercase font-semibold">Retail Price</p>
-                      <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">${item.customer_selling_rate.toFixed(2)}</p>
+                      <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(item.customer_selling_rate)}</p>
                     </div>
                     <Link
                       href="/inventory"

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { Medicine, InventoryIntelligence, DeadStockReport, Stock, ExpiryAlert } from "@/types";
+import { useCurrency } from "@/hooks/useCurrency";
 
 interface MedicineIntelReport extends Medicine {
   intelligence?: InventoryIntelligence;
@@ -16,6 +17,7 @@ interface MedicineIntelReport extends Medicine {
 type TabType = "intelligence" | "dead_stock" | "low_stock" | "expiry";
 
 export default function ReportsPage() {
+  const { formatCurrency } = useCurrency();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabType>("intelligence");
 
@@ -272,7 +274,7 @@ export default function ReportsPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-right font-extrabold text-slate-900 dark:text-slate-50">
-                        ${item.stock_value.toFixed(2)}
+                        {formatCurrency(item.stock_value)}
                       </td>
                     </tr>
                   ))

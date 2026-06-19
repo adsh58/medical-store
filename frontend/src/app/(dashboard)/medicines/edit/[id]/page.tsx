@@ -169,12 +169,12 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
               <select
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-955"
+                className="w-full rounded-lg border border-slate-200 bg-white text-slate-900 px-3.5 py-2.5 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
                 required
               >
-                <option value="">Select Category</option>
+                <option value="" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">Select Category</option>
                 {categories?.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  <option key={cat.id} value={cat.id} className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">{cat.name}</option>
                 ))}
               </select>
             </div>
@@ -189,7 +189,7 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
                 placeholder="e.g. GSK, Pfizer"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-955"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950"
                 required
               />
             </div>
@@ -204,7 +204,7 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
                 value={packSize}
                 onChange={(e) => setPackSize(e.target.value)}
                 placeholder="e.g. 10 tablets, 100ml bottle"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-955"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950"
                 required
               />
             </div>
@@ -222,7 +222,7 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
                   value={purchaseRate}
                   onChange={(e) => setPurchaseRate(e.target.value)}
                   placeholder="0.00"
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-955"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950"
                   required
                 />
                 <button
@@ -247,7 +247,7 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
                 value={mrp}
                 onChange={(e) => setMrp(e.target.value)}
                 placeholder="0.00"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-955"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950"
                 required
               />
             </div>
@@ -264,7 +264,7 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
                 value={doctorRate}
                 onChange={(e) => setDoctorRate(e.target.value)}
                 placeholder="0.00"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-955"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950"
                 required
               />
             </div>
@@ -281,7 +281,7 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
                 value={customerRate}
                 onChange={(e) => setCustomerRate(e.target.value)}
                 placeholder="0.00"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-955"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950"
                 required
               />
             </div>

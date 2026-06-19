@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { Medicine, User as SystemUser } from "@/types";
+import { useCurrency } from "@/hooks/useCurrency";
 
 interface CartItem {
   medicineId: string;
@@ -36,12 +37,8 @@ export default function SalesPOSPage() {
   const [paymentMode, setPaymentMode] = useState<string>("CASH");
   const [checkoutResult, setCheckoutResult] = useState<any>(null);
 
-  // Dynamic currency query
-  const { data: settingsData } = useQuery<any>({
-    queryKey: ["system-settings"],
-    queryFn: () => apiClient.get("/settings").then(res => res.data)
-  });
-  const currency = settingsData?.currency || "$";
+  // Centralized currency formatting
+  const { currencySymbol: currency } = useCurrency();
 
   // Customer search states
   const [customerSearch, setCustomerSearch] = useState("");

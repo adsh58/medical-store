@@ -11,10 +11,12 @@ import {
 import apiClient from "@/lib/api-client";
 import { Medicine, Stock, ExpiryAlert, Sale } from "@/types";
 import { useAuth } from "@/context/AuthContext";
+import { useCurrency } from "@/hooks/useCurrency";
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const isDoctor = user?.role?.name?.toUpperCase() === "DOCTOR";
+  const { formatCurrency } = useCurrency();
 
   // Queries
   const { data: medicines } = useQuery<Medicine[]>({
@@ -242,7 +244,7 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                    ${sale.net_amount.toFixed(2)}
+                    {formatCurrency(sale.net_amount)}
                   </span>
                 </div>
               ))

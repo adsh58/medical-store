@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { Agency } from "@/types";
+import { useCurrency } from "@/hooks/useCurrency";
 
 interface RateComparisonItem {
   medicine_id: string | null;
@@ -44,6 +45,7 @@ interface AIInvoiceAnalysisReport {
 }
 
 export default function UploadInvoicePage() {
+  const { formatCurrency, currencySymbol } = useCurrency();
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<AIInvoiceAnalysisReport | null>(null);
@@ -330,12 +332,12 @@ export default function UploadInvoicePage() {
                           {item.quantity} {item.free_quantity > 0 && <span className="text-xs text-emerald-500 font-semibold">(+{item.free_quantity} Free)</span>}
                         </td>
                         <td className="px-6 py-4 text-slate-700 dark:text-slate-300 font-medium">
-                          ${item.mrp.toFixed(2)} {item.old_mrp > 0 && item.old_mrp !== item.mrp && <span className="text-xs text-slate-400 line-through ml-1">${item.old_mrp.toFixed(2)}</span>}
+                          {formatCurrency(item.mrp)} {item.old_mrp > 0 && item.old_mrp !== item.mrp && <span className="text-xs text-slate-400 line-through ml-1">{formatCurrency(item.old_mrp)}</span>}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="font-bold text-slate-950 dark:text-slate-50">${item.new_rate.toFixed(2)}</span>
+                          <span className="font-bold text-slate-950 dark:text-slate-50">{formatCurrency(item.new_rate)}</span>
                           {item.old_rate > 0 && (
-                            <span className="text-xs text-slate-400 block">Old: ${item.old_rate.toFixed(2)}</span>
+                            <span className="text-xs text-slate-400 block">Old: {formatCurrency(item.old_rate)}</span>
                           )}
                         </td>
                         <td className="px-6 py-4 text-slate-650 dark:text-slate-350">{item.gst}%</td>
@@ -486,12 +488,12 @@ export default function UploadInvoicePage() {
                           <p className="text-[10px] text-slate-450">{item.company}</p>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-slate-900 dark:text-slate-100 font-bold">${item.new_rate.toFixed(2)}</span>
-                          <span className="text-[10px] text-slate-400 block">Was: ${item.old_rate.toFixed(2)}</span>
+                          <span className="text-slate-900 dark:text-slate-100 font-bold">{formatCurrency(item.new_rate)}</span>
+                          <span className="text-[10px] text-slate-400 block">Was: {formatCurrency(item.old_rate)}</span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-slate-900 dark:text-slate-100 font-bold">${item.mrp.toFixed(2)}</span>
-                          {item.old_mrp > 0 && <span className="text-[10px] text-slate-400 block">Was: ${item.old_mrp.toFixed(2)}</span>}
+                          <span className="text-slate-900 dark:text-slate-100 font-bold">{formatCurrency(item.mrp)}</span>
+                          {item.old_mrp > 0 && <span className="text-[10px] text-slate-400 block">Was: {formatCurrency(item.old_mrp)}</span>}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-col gap-1">
@@ -502,7 +504,7 @@ export default function UploadInvoicePage() {
                               onChange={(e) => handlePriceChangeRateUpdate(index, "recommended_doctor_rate", e.target.value)}
                               className="rounded border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-950 p-1 w-20 text-xs font-semibold outline-none focus:border-emerald-500"
                             />
-                            <span className="text-[9px] text-slate-400 block">Rec: ${(item.new_rate * 1.15).toFixed(2)}</span>
+                            <span className="text-[9px] text-slate-400 block">Rec: {formatCurrency(item.new_rate * 1.15)}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -514,7 +516,7 @@ export default function UploadInvoicePage() {
                               onChange={(e) => handlePriceChangeRateUpdate(index, "recommended_customer_rate", e.target.value)}
                               className="rounded border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-950 p-1 w-20 text-xs font-semibold outline-none focus:border-emerald-500"
                             />
-                            <span className="text-[9px] text-slate-400 block">Rec: ${(item.new_rate * 1.30).toFixed(2)}</span>
+                            <span className="text-[9px] text-slate-400 block">Rec: {formatCurrency(item.new_rate * 1.30)}</span>
                           </div>
                         </td>
                       </tr>
