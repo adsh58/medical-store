@@ -129,7 +129,7 @@ async def create_medicine(
     med = await medicine_service.create_medicine(db, medicine_in)
     await db.commit()
     query_cache.delete("medicines:list")
-    return med
+    return await medicine_repo.get(db, med.id)
 
 @router.get("/", response_model=List[MedicineResponse])
 async def list_medicines(
