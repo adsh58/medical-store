@@ -16,7 +16,7 @@ from app.models.all_models import (
     Agency, PurchaseInvoice, PurchaseInvoiceItem, Batch, Stock,
     MedicineLocationMapping, Sales, SaleItem, PriceHistory,
     PurchaseHistory, InventoryIntelligence, ExpiryTracking,
-    AIInvoiceProcessingLog, SystemSetting, Customer
+    AIInvoiceProcessingLog, SystemSetting, Customer, SystemLog
 )
 
 # Alembic Config object

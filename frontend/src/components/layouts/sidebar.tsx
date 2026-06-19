@@ -36,6 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     { name: "Expiry Alerts", href: "/alerts", icon: AlertTriangle, roles: ["ADMIN", "MANAGER"] },
     { name: "Reports", href: "/reports", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
     { name: "Settings", href: "/settings", icon: Settings, roles: ["ADMIN", "MANAGER", "CASHIER", "DOCTOR"] },
+    { name: "System Logs", href: "/settings/logs", icon: ShieldAlert, roles: ["ADMIN", "MANAGER"] },
   ];
 
   const userRole = user?.role?.name?.toUpperCase() || "";

@@ -454,4 +454,17 @@ class SystemSettingUpdate(BaseModel):
     doctor_margin: Optional[float] = None
 
 
+class SystemLogResponse(BaseModel):
+    id: uuid.UUID
+    log_level: str
+    module: str
+    message: str
+    stack_trace: Optional[str] = None
+    request_path: Optional[str] = None
+    request_method: Optional[str] = None
+    user_id: Optional[uuid.UUID] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 

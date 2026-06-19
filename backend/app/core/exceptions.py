@@ -27,11 +27,60 @@ class ForbiddenException(AppException):
     def __init__(self, message: str = "Forbidden"):
         super().__init__(message, status.HTTP_403_FORBIDDEN)
 
+import traceback
+import uuid
+from app.database import AsyncSessionLocal
+from app.models.all_models import SystemLog
+from app.config import settings
+from jose import jwt
+
+async def log_to_db(request: Request, log_level: str, message: str, stack_trace: str = None):
+    try:
+        path = request.url.path
+        method = request.method
+        
+        # Determine module from request path
+        module = "general"
+        for m in ["auth", "medicines", "agencies", "purchases", "invoices", "inventory", "racks", "sales", "alerts", "intelligence", "customers", "settings"]:
+            if f"/{m}" in path:
+                module = m
+                break
+                
+        # Parse user if token is present
+        user_id = None
+        auth_header = request.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
+                user_id_str = payload.get("sub")
+                if user_id_str:
+                    user_id = uuid.UUID(user_id_str)
+            except Exception:
+                pass
+                
+        async with AsyncSessionLocal() as db:
+            log_entry = SystemLog(
+                log_level=log_level,
+                module=module,
+                message=message,
+                stack_trace=stack_trace,
+                request_path=path,
+                request_method=method,
+                user_id=user_id
+            )
+            db.add(log_entry)
+            await db.commit()
+    except Exception as e:
+        logger.error(f"Failed to log system event to database: {str(e)}")
+
 # Global handlers
 def register_exception_handlers(app):
     @app.exception_handler(AppException)
     async def app_exception_handler(request: Request, exc: AppException):
         logger.error(f"AppException raised: {exc.message} on {request.url.path}")
+        log_level = "ERROR" if exc.status_code >= 500 else "WARNING"
+        await log_to_db(request, log_level, exc.message)
         return JSONResponse(
             status_code=exc.status_code,
             content={"success": False, "error": exc.message}
@@ -45,6 +94,7 @@ def register_exception_handlers(app):
             errors.append(f"{loc}: {error.get('msg')}")
         error_msg = "; ".join(errors)
         logger.error(f"Validation error on {request.url.path}: {error_msg}")
+        await log_to_db(request, "WARNING", f"Validation failed: {error_msg}")
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={"success": False, "error": "Validation failed", "details": error_msg}
@@ -52,9 +102,9 @@ def register_exception_handlers(app):
 
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):
-        import traceback
-        traceback.print_exc()
+        tb = traceback.format_exc()
         logger.exception(f"Unhandled exception on {request.url.path}: {str(exc)}")
+        await log_to_db(request, "ERROR", f"Unhandled exception: {str(exc)}", stack_trace=tb)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": "An internal server error occurred."}

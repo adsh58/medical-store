@@ -476,3 +476,17 @@ class Customer(Base):
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
+class SystemLog(Base):
+    __tablename__ = "system_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    log_level: Mapped[str] = mapped_column(String(50), nullable=False)  # ERROR, WARNING, INFO
+    module: Mapped[str] = mapped_column(String(100), nullable=False)     # auth, purchase, sales, etc.
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    stack_trace: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    request_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    request_method: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+
