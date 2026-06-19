@@ -57,6 +57,11 @@ class MedicineRepository(BaseRepository[Medicine]):
         result = await db.execute(query)
         return result.scalars().first()
 
+    async def get_by_name_global(self, db: AsyncSession, name: str) -> Optional[Medicine]:
+        query = select(self.model).filter(self.model.name == name)
+        result = await db.execute(query)
+        return result.scalars().first()
+
     async def get(self, db: AsyncSession, id: uuid.UUID) -> Optional[Medicine]:
         from sqlalchemy.orm import selectinload
         query = select(self.model).filter(
@@ -315,6 +320,11 @@ stock_movement_repo = StockMovementRepository(StockMovement)
 class CustomerRepository(BaseRepository[Customer]):
     async def get_by_phone(self, db: AsyncSession, phone: str) -> Optional[Customer]:
         query = select(self.model).filter(self.model.phone == phone, self.model.deleted_at == None)
+        result = await db.execute(query)
+        return result.scalars().first()
+
+    async def get_by_phone_global(self, db: AsyncSession, phone: str) -> Optional[Customer]:
+        query = select(self.model).filter(self.model.phone == phone)
         result = await db.execute(query)
         return result.scalars().first()
 

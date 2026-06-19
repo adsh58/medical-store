@@ -60,7 +60,7 @@ class AuthService:
 # ==========================================
 class MedicineService:
     async def create_medicine(self, db: AsyncSession, medicine_in: MedicineCreate) -> Medicine:
-        existing = await medicine_repo.get_by_name(db, medicine_in.name)
+        existing = await medicine_repo.get_by_name_global(db, medicine_in.name)
         if existing:
             raise BadRequestException("Medicine with this name already exists")
         
@@ -78,7 +78,7 @@ class MedicineService:
             raise NotFoundException("Medicine not found")
         
         if medicine_in.name and medicine_in.name != med.name:
-            existing = await medicine_repo.get_by_name(db, medicine_in.name)
+            existing = await medicine_repo.get_by_name_global(db, medicine_in.name)
             if existing:
                 raise BadRequestException("Medicine with this name already exists")
         
@@ -522,7 +522,7 @@ inventory_service = InventoryService()
 
 class CustomerService:
     async def create_customer(self, db: AsyncSession, customer_in: CustomerCreate):
-        existing = await customer_repo.get_by_phone(db, customer_in.phone)
+        existing = await customer_repo.get_by_phone_global(db, customer_in.phone)
         if existing:
             raise BadRequestException("Customer with this phone number already registered")
         return await customer_repo.create(db, obj_in=customer_in.model_dump())
@@ -532,7 +532,7 @@ class CustomerService:
         if not cust:
             raise NotFoundException("Customer not found")
         if customer_in.phone and customer_in.phone != cust.phone:
-            existing = await customer_repo.get_by_phone(db, customer_in.phone)
+            existing = await customer_repo.get_by_phone_global(db, customer_in.phone)
             if existing:
                 raise BadRequestException("Customer with this phone number already registered")
         update_data = customer_in.model_dump(exclude_unset=True)
