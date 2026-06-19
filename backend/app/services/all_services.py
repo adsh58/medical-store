@@ -62,7 +62,23 @@ class MedicineService:
     async def create_medicine(self, db: AsyncSession, medicine_in: MedicineCreate) -> Medicine:
         existing = await medicine_repo.get_by_name_global(db, medicine_in.name)
         if existing:
-            raise BadRequestException("Medicine with this name already exists")
+            if existing.is_deleted:
+                # Verify category exists first
+                from app.repositories.all_repos import category_repo
+                category = await category_repo.get(db, medicine_in.category_id)
+                if not category:
+                    raise BadRequestException("Selected category does not exist")
+                
+                # Reactivate and update details
+                existing.is_deleted = False
+                existing.deleted_at = None
+                for field, value in medicine_in.model_dump().items():
+                    setattr(existing, field, value)
+                db.add(existing)
+                await db.flush()
+                return existing
+            else:
+                raise BadRequestException("Medicine with this name already exists")
         
         from app.repositories.all_repos import category_repo
         category = await category_repo.get(db, medicine_in.category_id)
@@ -524,7 +540,17 @@ class CustomerService:
     async def create_customer(self, db: AsyncSession, customer_in: CustomerCreate):
         existing = await customer_repo.get_by_phone_global(db, customer_in.phone)
         if existing:
-            raise BadRequestException("Customer with this phone number already registered")
+            if existing.is_deleted:
+                # Reactivate and update details
+                existing.is_deleted = False
+                existing.deleted_at = None
+                for field, value in customer_in.model_dump().items():
+                    setattr(existing, field, value)
+                db.add(existing)
+                await db.flush()
+                return existing
+            else:
+                raise BadRequestException("Customer with this phone number already registered")
         return await customer_repo.create(db, obj_in=customer_in.model_dump())
 
     async def update_customer(self, db: AsyncSession, customer_id: uuid.UUID, customer_in: CustomerCreate):
