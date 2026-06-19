@@ -19,7 +19,10 @@ class ExtractedInvoiceItem(BaseModel):
     batch_no: str = Field(description="The batch number of the medicine")
     expiry_date: str = Field(description="The expiry date of the medicine in YYYY-MM-DD format. If only MM/YY is given, assume last day of that month")
     quantity: int = Field(description="The quantity of the medicine purchased")
+    free_quantity: int = Field(default=0, description="The free quantity of medicine items included in the invoice. If not specified, return 0.")
     purchase_rate: float = Field(description="The purchase rate per unit or pack size")
+    mrp: float = Field(description="The maximum retail price (MRP) of the medicine per unit or pack size")
+    gst: float = Field(default=0.0, description="The GST rate percentage applied to this medicine, e.g. 12.0 or 18.0. If not specified, return 0.0.")
     company: str = Field(description="The manufacturer/company name of the medicine if available or known. If not present, return empty string.")
     pack_size: str = Field(description="The pack configuration or packaging unit, e.g. 10s, 16x500ml, 15g, if available or known. If not present, return empty string.")
     generic_name: str = Field(description="The generic active ingredient/chemical name of the medicine if available or known. If not present, return empty string.")
@@ -42,8 +45,13 @@ class RateComparisonItem(BaseModel):
     batch_no: str
     expiry_date: date
     quantity: int
+    free_quantity: int = 0
     new_rate: float
     old_rate: float
+    mrp: float
+    old_mrp: float
+    gst: float = 0.0
+    price_changed: bool = False
     difference_percentage: float
     trend: str  # INCREASED, DECREASED, UNCHANGED, NEW_MEDICINE
     alert_triggered: bool
@@ -97,7 +105,9 @@ class AIService:
                 prompt = (
                     "Analyze this invoice image/document carefully. "
                     "Extract all medicine line items including medicine name, batch number, "
-                    "expiry date, quantity, and purchase rate. "
+                    "expiry date, quantity, free quantity (or free quantity received, default to 0 if not present), "
+                    "MRP (maximum retail price, default to purchase rate * 1.5 if not present), "
+                    "purchase rate, and GST rate percentage (e.g. 12.0 or 18.0, default to 0.0 if not present). "
                     "Additionally, try to extract the manufacturer/company name, the packaging pack size (e.g. 10s, 16x500ml, 15g), "
                     "and the generic name / active ingredient for each medicine if they are specified or can be inferred. "
                     "Ensure dates are strictly in YYYY-MM-DD format."
@@ -158,15 +168,23 @@ class AIService:
             medicine = await medicine_repo.get_by_name(db, item.medicine_name, store_id=store_id)
             
             old_rate = 0.0
+            old_mrp = 0.0
             trend = "NEW_MEDICINE"
             diff_pct = 0.0
             alert_triggered = False
             alert_message = None
-            mrp = item.purchase_rate * 1.5  # mock default MRP for recommendations
+            price_changed = False
+            
+            # The MRP from invoice
+            mrp = item.mrp
 
             if medicine:
-                old_rate = float(medicine.current_purchase_rate)
-                mrp = float(medicine.mrp)
+                old_rate = float(medicine.purchase_rate)
+                old_mrp = float(medicine.mrp)
+                
+                # Detect price changes
+                if old_rate != item.purchase_rate or old_mrp != mrp:
+                    price_changed = True
                 
                 if old_rate > 0:
                     diff_pct = ((item.purchase_rate - old_rate) / old_rate) * 100.0
@@ -203,8 +221,13 @@ class AIService:
                     batch_no=item.batch_no,
                     expiry_date=exp_date,
                     quantity=item.quantity,
+                    free_quantity=item.free_quantity,
                     new_rate=item.purchase_rate,
                     old_rate=old_rate,
+                    mrp=mrp,
+                    old_mrp=old_mrp,
+                    gst=item.gst,
+                    price_changed=price_changed,
                     difference_percentage=diff_pct,
                     trend=trend,
                     alert_triggered=alert_triggered,
@@ -237,47 +260,59 @@ class AIService:
         """
         Mock invoice payload modeling a standard pharmacy supplier invoice.
         """
-        import time
-        invoice_number = f"INV-Mock-{int(time.time())}"
-        if file_name:
+        invoice_number = "SA-001176"
+        supplier_name = "SHIV MEDICAL AGENCY"
+        
+        if file_name and "SA-001176" not in file_name and "invoice" not in file_name.lower():
+            import time
             name_part = file_name.split(".")[0]
             clean_part = "".join(c for c in name_part if c.isalnum() or c in "-_")
             invoice_number = f"INV-{clean_part}-{int(time.time())}"
+            supplier_name = "E2E Mock Supplier Agency"
 
         return ExtractedInvoice(
             invoice_number=invoice_number,
-            supplier_name="E2E Mock Supplier Agency",
-            invoice_date="2026-06-12",
+            supplier_name=supplier_name,
+            invoice_date="2026-06-11",
             items=[
                 ExtractedInvoiceItem(
-                    medicine_name="Paracetamol 650mg",
-                    batch_no="BATCH-PM990",
+                    medicine_name="CEFTUM-500 MG",  # Matches existing medicine to trigger price change
+                    batch_no="GUTC25069",
                     expiry_date="2027-12-31",
-                    quantity=150,
-                    purchase_rate=12.50,
-                    company="Cipla Ltd",
-                    pack_size="15's",
-                    generic_name="Paracetamol"
-                ),
-                ExtractedInvoiceItem(
-                    medicine_name="Amoxicillin 500mg",
-                    batch_no="BATCH-AMX122",
-                    expiry_date="2028-06-30",
-                    quantity=80,
-                    purchase_rate=45.00,
-                    company="Alkem Laboratories",
+                    quantity=5,
+                    free_quantity=1,
+                    purchase_rate=420.00,  # Changed rate (was 418.60)
+                    mrp=500.00,
+                    gst=12.00,
+                    company="GlaxoSmithKline",
                     pack_size="10's",
-                    generic_name="Amoxicillin"
+                    generic_name="Cefuroxime Axetil"
                 ),
                 ExtractedInvoiceItem(
-                    medicine_name="Atorvastatin 10mg",
-                    batch_no="BATCH-ATR311",
-                    expiry_date="2027-09-30",
-                    quantity=200,
-                    purchase_rate=78.20,
+                    medicine_name="DIGENE GEL (MINT)",  # Matches existing medicine to trigger price change
+                    batch_no="DEM25061",
+                    expiry_date="2028-06-30",
+                    quantity=10,
+                    free_quantity=2,
+                    purchase_rate=140.00,  # Changed rate (was 137.71)
+                    mrp=175.00,
+                    gst=12.00,
                     company="Abbott India",
-                    pack_size="15's",
-                    generic_name="Atorvastatin"
+                    pack_size="200ml",
+                    generic_name="Antacid"
+                ),
+                ExtractedInvoiceItem(
+                    medicine_name="Mock New Medicine AAA",  # Does not exist, triggers auto-creation
+                    batch_no="BATCH-AAA99",
+                    expiry_date="2027-09-30",
+                    quantity=15,
+                    free_quantity=0,
+                    purchase_rate=50.00,
+                    mrp=80.00,
+                    gst=18.00,
+                    company="Mock Pharma",
+                    pack_size="10s",
+                    generic_name="Mock Generic"
                 )
             ]
         )

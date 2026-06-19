@@ -307,8 +307,10 @@ class PurchaseInvoiceItemCreate(BaseModel):
     medicine_id: uuid.UUID
     batch_number: str
     quantity: int = Field(gt=0)
+    free_quantity: int = Field(default=0, ge=0)
     purchase_rate: float = Field(gt=0)
     expiry_date: date
+    gst: float = Field(default=0.0, ge=0.0)
 
 class PurchaseInvoiceCreate(BaseModel):
     agency_id: uuid.UUID
@@ -322,8 +324,10 @@ class PurchaseInvoiceItemResponse(BaseModel):
     medicine_id: uuid.UUID
     batch_number: str
     quantity: int
+    free_quantity: int = 0
     purchase_rate: float
     expiry_date: date
+    gst: float = 0.0
     model_config = ConfigDict(from_attributes=True)
 
 class PurchaseInvoiceResponse(BaseModel):
@@ -336,6 +340,29 @@ class PurchaseInvoiceResponse(BaseModel):
     items: List[PurchaseInvoiceItemResponse] = []
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+class AIInvoiceItemCommit(BaseModel):
+    medicine_id: Optional[uuid.UUID] = None
+    medicine_name: str
+    batch_number: str
+    quantity: int = Field(gt=0)
+    free_quantity: int = Field(default=0, ge=0)
+    expiry_date: date
+    mrp: float = Field(gt=0)
+    purchase_rate: float = Field(gt=0)
+    gst: float = Field(default=0.0, ge=0.0)
+    doctor_rate: float = Field(gt=0)
+    customer_rate: float = Field(gt=0)
+    company: Optional[str] = None
+    pack_size: Optional[str] = None
+    generic_name: Optional[str] = None
+
+class AIInvoiceCommitRequest(BaseModel):
+    agency_id: uuid.UUID
+    invoice_number: str
+    invoice_date: date
+    conflict_resolution: Optional[str] = None  # None, "replace", "reprocess"
+    items: List[AIInvoiceItemCommit]
 
 
 # ==========================================

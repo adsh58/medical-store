@@ -14,14 +14,15 @@ from app.models.all_models import (
 from app.schemas.all_schemas import (
     UserCreate, UserLogin, Token, MedicineCreate, AgencyCreate, 
     PurchaseInvoiceCreate, SaleCreate, RackCreate, ShelfCreate, BoxCreate, LocationMappingCreate,
-    StockAdjustmentRequest, DeadStockResponse, MedicineUpdate, CustomerCreate, SystemSettingUpdate
+    StockAdjustmentRequest, DeadStockResponse, MedicineUpdate, CustomerCreate, SystemSettingUpdate,
+    AIInvoiceCommitRequest
 )
 from app.repositories.all_repos import (
     user_repo, role_repo, store_repo, doctor_repo, category_repo, master_medicine_repo,
     medicine_repo, agency_repo, invoice_repo, invoice_item_repo, batch_repo, stock_repo, 
     location_mapping_repo, sales_repo, sale_item_repo, price_history_repo, 
     purchase_history_repo, intelligence_repo, expiry_repo, rack_repo, shelf_repo, box_repo,
-    stock_movement_repo, customer_repo, setting_repo
+    stock_movement_repo, customer_repo, setting_repo, ai_log_repo
 )
 
 # ==========================================
@@ -265,13 +266,19 @@ class PurchaseService:
             if not medicine:
                 raise NotFoundException(f"Medicine ID {item.medicine_id} not found")
 
+            # Support free_quantity and gst from schemas if available
+            free_qty = getattr(item, "free_quantity", 0)
+            gst_rate = getattr(item, "gst", 0.0)
+
             await invoice_item_repo.create(db, obj_in={
                 "invoice_id": invoice_obj.id,
                 "medicine_id": item.medicine_id,
                 "batch_number": item.batch_number,
                 "quantity": item.quantity,
+                "free_quantity": free_qty,
                 "purchase_rate": item.purchase_rate,
-                "expiry_date": item.expiry_date
+                "expiry_date": item.expiry_date,
+                "gst": gst_rate
             })
 
             batch = await batch_repo.get_by_medicine_and_number(db, item.medicine_id, item.batch_number, store_id=store_id)
@@ -287,13 +294,14 @@ class PurchaseService:
                     "updated_by_user_id": user_id
                 })
 
+            total_received = item.quantity + free_qty
             stock = await stock_repo.get_by_batch(db, batch.id, store_id=store_id)
             if not stock:
                 old_qty = 0
                 stock = await stock_repo.create(db, obj_in={
                     "store_id": store_id,
                     "batch_id": batch.id,
-                    "current_stock": item.quantity,
+                    "current_stock": total_received,
                     "minimum_stock": 10,
                     "reorder_level": 20,
                     "created_by_user_id": user_id,
@@ -301,7 +309,7 @@ class PurchaseService:
                 })
             else:
                 old_qty = stock.current_stock
-                stock.current_stock += item.quantity
+                stock.current_stock += total_received
                 stock.updated_by_user_id = user_id
                 db.add(stock)
 
@@ -310,7 +318,7 @@ class PurchaseService:
                 "batch_id": batch.id,
                 "old_quantity": old_qty,
                 "new_quantity": stock.current_stock,
-                "difference": item.quantity,
+                "difference": total_received,
                 "reason": "PURCHASE",
                 "user_id": user_id
             })
@@ -336,7 +344,216 @@ class PurchaseService:
                 medicine.updated_by_user_id = user_id
                 db.add(medicine)
 
-        return invoice_obj
+        from sqlalchemy.orm import selectinload
+        res = await db.execute(
+            select(PurchaseInvoice)
+            .filter(PurchaseInvoice.id == invoice_obj.id)
+            .options(selectinload(PurchaseInvoice.items))
+        )
+        return res.scalars().first()
+
+    async def process_ai_commit(self, db: AsyncSession, payload: AIInvoiceCommitRequest, store_id: uuid.UUID, user_id: Optional[uuid.UUID] = None) -> PurchaseInvoice:
+        agency = await agency_repo.get(db, payload.agency_id, store_id=store_id)
+        if not agency:
+            raise NotFoundException("Agency not found")
+
+        invoice_number = payload.invoice_number
+        existing = await invoice_repo.get_by_number(db, payload.agency_id, invoice_number, store_id=store_id)
+        
+        if existing:
+            resolution = payload.conflict_resolution
+            if not resolution:
+                raise BadRequestException("DUPLICATE_INVOICE")
+            elif resolution == "reprocess":
+                suffix_counter = 1
+                new_invoice_number = f"{invoice_number}-DUP{suffix_counter}"
+                while await invoice_repo.get_by_number(db, payload.agency_id, new_invoice_number, store_id=store_id):
+                    suffix_counter += 1
+                    new_invoice_number = f"{invoice_number}-DUP{suffix_counter}"
+                invoice_number = new_invoice_number
+            elif resolution == "replace":
+                old_items = await db.execute(
+                    select(PurchaseInvoiceItem).filter(PurchaseInvoiceItem.invoice_id == existing.id)
+                )
+                for old_item in old_items.scalars().all():
+                    batch = await batch_repo.get_by_medicine_and_number(db, old_item.medicine_id, old_item.batch_number, store_id=store_id)
+                    if batch:
+                        stock = await stock_repo.get_by_batch(db, batch.id, store_id=store_id)
+                        if stock:
+                            old_qty = stock.current_stock
+                            total_qty = old_item.quantity + old_item.free_quantity
+                            new_qty = max(0, old_qty - total_qty)
+                            stock.current_stock = new_qty
+                            db.add(stock)
+                            
+                            await stock_movement_repo.create(db, obj_in={
+                                "medicine_id": old_item.medicine_id,
+                                "batch_id": batch.id,
+                                "old_quantity": old_qty,
+                                "new_quantity": new_qty,
+                                "difference": -total_qty,
+                                "reason": "PURCHASE_REVERSAL",
+                                "user_id": user_id
+                            })
+                await invoice_repo.remove(db, id=existing.id)
+                await db.flush()
+
+        total_amount = sum(item.purchase_rate * item.quantity for item in payload.items)
+        invoice_obj = await invoice_repo.create(db, obj_in={
+            "store_id": store_id,
+            "agency_id": payload.agency_id,
+            "invoice_number": invoice_number,
+            "invoice_date": payload.invoice_date,
+            "total_amount": total_amount,
+            "ai_status": "COMPLETED",
+            "created_by_user_id": user_id,
+            "updated_by_user_id": user_id
+        })
+        await db.flush()
+
+        for item in payload.items:
+            medicine = None
+            if item.medicine_id:
+                medicine = await medicine_repo.get(db, item.medicine_id, store_id=store_id)
+            if not medicine:
+                medicine = await medicine_repo.get_by_name(db, item.medicine_name, store_id=store_id)
+                
+            if not medicine:
+                res_cat = await db.execute(select(MasterCategory).filter(MasterCategory.name == "Uncategorized"))
+                category = res_cat.scalars().first()
+                if not category:
+                    category = MasterCategory(name="Uncategorized", description="AI Auto-Created")
+                    db.add(category)
+                    await db.flush()
+                
+                extracted_pack = item.pack_size or "AI Extracted Pack"
+                extracted_company = item.company or "AI Extracted Company"
+                extracted_generic = item.generic_name or "AI Extracted Generic"
+                
+                med_in = MedicineCreate(
+                    category_id=category.id,
+                    name=item.medicine_name,
+                    generic_name=extracted_generic,
+                    company=extracted_company,
+                    pack_size=extracted_pack,
+                    mrp=item.mrp,
+                    current_purchase_rate=item.purchase_rate,
+                    doctor_selling_rate=item.doctor_rate,
+                    customer_selling_rate=item.customer_rate
+                )
+                medicine = await medicine_service.create_medicine(db, med_in, store_id=store_id, user_id=user_id)
+                await db.flush()
+            else:
+                old_mrp = float(medicine.mrp)
+                old_purchase_rate = float(medicine.purchase_rate)
+                old_doctor_rate = float(medicine.doctor_rate)
+                old_customer_rate = float(medicine.customer_rate)
+                
+                if old_doctor_rate != item.doctor_rate or old_customer_rate != item.customer_rate:
+                    await price_history_repo.create(db, obj_in={
+                        "medicine_id": medicine.id,
+                        "old_doctor_rate": old_doctor_rate,
+                        "new_doctor_rate": item.doctor_rate,
+                        "old_customer_rate": old_customer_rate,
+                        "new_customer_rate": item.customer_rate,
+                        "changed_by": user_id,
+                        "changed_at": datetime.utcnow()
+                    })
+                
+                if old_purchase_rate != item.purchase_rate:
+                    await purchase_history_repo.create(db, obj_in={
+                        "medicine_id": medicine.id,
+                        "agency_id": payload.agency_id,
+                        "invoice_id": invoice_obj.id,
+                        "batch_number": item.batch_number,
+                        "old_purchase_rate": old_purchase_rate,
+                        "new_purchase_rate": item.purchase_rate
+                    })
+                
+                medicine.mrp = item.mrp
+                medicine.purchase_rate = item.purchase_rate
+                medicine.doctor_rate = item.doctor_rate
+                medicine.customer_rate = item.customer_rate
+                medicine.updated_by_user_id = user_id
+                db.add(medicine)
+                await db.flush()
+
+            await invoice_item_repo.create(db, obj_in={
+                "invoice_id": invoice_obj.id,
+                "medicine_id": medicine.id,
+                "batch_number": item.batch_number,
+                "quantity": item.quantity,
+                "free_quantity": item.free_quantity,
+                "purchase_rate": item.purchase_rate,
+                "expiry_date": item.expiry_date,
+                "gst": item.gst
+            })
+
+            batch = await batch_repo.get_by_medicine_and_number(db, medicine.id, item.batch_number, store_id=store_id)
+            if not batch:
+                batch = await batch_repo.create(db, obj_in={
+                    "store_id": store_id,
+                    "medicine_id": medicine.id,
+                    "batch_number": item.batch_number,
+                    "expiry_date": item.expiry_date,
+                    "mrp": item.mrp,
+                    "purchase_rate": item.purchase_rate,
+                    "created_by_user_id": user_id,
+                    "updated_by_user_id": user_id
+                })
+            else:
+                batch.expiry_date = item.expiry_date
+                batch.mrp = item.mrp
+                batch.purchase_rate = item.purchase_rate
+                batch.updated_by_user_id = user_id
+                db.add(batch)
+            await db.flush()
+
+            total_qty_received = item.quantity + item.free_quantity
+            stock = await stock_repo.get_by_batch(db, batch.id, store_id=store_id)
+            if not stock:
+                old_qty = 0
+                stock = await stock_repo.create(db, obj_in={
+                    "store_id": store_id,
+                    "batch_id": batch.id,
+                    "current_stock": total_qty_received,
+                    "minimum_stock": 10,
+                    "reorder_level": 20,
+                    "created_by_user_id": user_id,
+                    "updated_by_user_id": user_id
+                })
+            else:
+                old_qty = stock.current_stock
+                stock.current_stock += total_qty_received
+                stock.updated_by_user_id = user_id
+                db.add(stock)
+            await db.flush()
+
+            await stock_movement_repo.create(db, obj_in={
+                "medicine_id": medicine.id,
+                "batch_id": batch.id,
+                "old_quantity": old_qty,
+                "new_quantity": stock.current_stock,
+                "difference": total_qty_received,
+                "reason": "PURCHASE",
+                "user_id": user_id
+            })
+
+        await ai_log_repo.create(db, obj_in={
+            "invoice_id": invoice_obj.id,
+            "file_name": f"Committed: {invoice_number}",
+            "file_size_bytes": 0,
+            "status": "SUCCESS",
+            "processed_at": datetime.utcnow()
+        })
+        
+        from sqlalchemy.orm import selectinload
+        res = await db.execute(
+            select(PurchaseInvoice)
+            .filter(PurchaseInvoice.id == invoice_obj.id)
+            .options(selectinload(PurchaseInvoice.items))
+        )
+        return res.scalars().first()
 
 
 # ==========================================
