@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Grid, Plus, Check, FolderPlus, CircleAlert, LayoutGrid } from "lucide-react";
+import { Grid, Plus, Check, FolderPlus, CircleAlert, LayoutGrid, ChevronLeft, ChevronRight } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { Rack } from "@/types";
 
@@ -13,6 +13,9 @@ export default function RackManagementPage() {
   const [selectedRackId, setSelectedRackId] = useState<string | null>(null);
   const [newBoxName, setNewBoxName] = useState<string>("");
   const [selectedShelfId, setSelectedShelfId] = useState<string | null>(null);
+
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const itemsPerPage = 5; // Using 5 items per page as rack layouts are large card UI elements
 
   // Queries
   const { data: racks, isLoading, refetch } = useQuery<Rack[]>({
@@ -34,6 +37,12 @@ export default function RackManagementPage() {
       }
     ])
   });
+
+  const totalItems = racks ? racks.length : 0;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const currentRacks = racks ? racks.slice(startIndex, endIndex) : [];
 
   // Mutations
   const addRackMutation = useMutation({
@@ -118,52 +127,140 @@ export default function RackManagementPage() {
               <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
             </div>
           ) : racks && racks.length > 0 ? (
-            <div className="space-y-6">
-              {racks.map((rack) => (
-                <div key={rack.id} className="border border-slate-100 rounded-xl p-4 dark:border-slate-800/80 bg-slate-50/30 dark:bg-slate-950/20">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{rack.name}</h3>
+            <>
+              <div className="space-y-6">
+                {currentRacks.map((rack) => (
+                  <div key={rack.id} className="border border-slate-100 rounded-xl p-4 dark:border-slate-800/80 bg-slate-50/30 dark:bg-slate-950/20">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{rack.name}</h3>
+                      <button
+                        onClick={() => setSelectedRackId(rack.id)}
+                        className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-emerald-500 hover:text-emerald-400"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Add Shelf
+                      </button>
+                    </div>
+
+                    {/* Shelves grid rendering */}
+                    <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+                      {rack.shelves && rack.shelves.length > 0 ? (
+                        rack.shelves.map((shelf) => (
+                          <div 
+                            key={shelf.id}
+                            className="flex flex-col items-center justify-between rounded-lg border border-slate-200 bg-white p-3 text-center dark:border-slate-800 dark:bg-slate-900 shadow-sm transition-all hover:scale-105 hover:border-emerald-500/50"
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-250">{shelf.name}</span>
+                            <span className="text-[10px] text-slate-400 mt-1">
+                              {shelf.boxes?.length || 0} boxes allocated
+                            </span>
+                            <button
+                              onClick={() => {
+                                setSelectedShelfId(shelf.id);
+                                setSelectedRackId(null);
+                              }}
+                              className="mt-2 text-[10px] font-semibold text-emerald-500 hover:text-emerald-455"
+                            >
+                              + Add Box
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="col-span-full py-4 text-center text-xs text-slate-400">
+                          No shelves defined in this rack yet.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalItems > itemsPerPage && (
+                <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-4 mt-6 dark:border-slate-800/60 dark:bg-slate-900 rounded-xl">
+                  <div className="flex flex-1 justify-between sm:hidden">
                     <button
-                      onClick={() => setSelectedRackId(rack.id)}
-                      className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-emerald-500 hover:text-emerald-400"
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
                     >
-                      <Plus className="h-3 w-3" />
-                      Add Shelf
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      Next
                     </button>
                   </div>
-
-                  {/* Shelves grid rendering */}
-                  <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-                    {rack.shelves && rack.shelves.length > 0 ? (
-                      rack.shelves.map((shelf) => (
-                        <div 
-                          key={shelf.id}
-                          className="flex flex-col items-center justify-between rounded-lg border border-slate-200 bg-white p-3 text-center dark:border-slate-800 dark:bg-slate-900 shadow-sm transition-all hover:scale-105 hover:border-emerald-500/50"
+                  <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs text-slate-500">
+                        Showing <span className="font-semibold text-slate-705 dark:text-slate-300">{totalItems === 0 ? 0 : startIndex + 1}</span> to{" "}
+                        <span className="font-semibold text-slate-705 dark:text-slate-300">{endIndex}</span> of{" "}
+                        <span className="font-semibold text-slate-705 dark:text-slate-300">{totalItems}</span> entries
+                      </p>
+                    </div>
+                    <div>
+                      <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                        <button
+                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 dark:ring-slate-800 dark:hover:bg-slate-800 disabled:opacity-40"
                         >
-                          <span className="text-xs font-bold text-slate-800 dark:text-slate-250">{shelf.name}</span>
-                          <span className="text-[10px] text-slate-400 mt-1">
-                            {shelf.boxes?.length || 0} boxes allocated
-                          </span>
-                          <button
-                            onClick={() => {
-                              setSelectedShelfId(shelf.id);
-                              setSelectedRackId(null);
-                            }}
-                            className="mt-2 text-[10px] font-semibold text-emerald-500 hover:text-emerald-450"
-                          >
-                            + Add Box
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="col-span-full py-4 text-center text-xs text-slate-400">
-                        No shelves defined in this rack yet.
-                      </div>
-                    )}
+                          <span className="sr-only">Previous</span>
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                          if (
+                            page === 1 ||
+                            page === totalPages ||
+                            (page >= currentPage - 1 && page <= currentPage + 1)
+                          ) {
+                            return (
+                              <button
+                                key={page}
+                                onClick={() => setCurrentPage(page)}
+                                aria-current={currentPage === page ? "page" : undefined}
+                                className={`relative inline-flex items-center px-3 py-1.5 text-xs font-semibold focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+                                  currentPage === page
+                                    ? "z-10 bg-emerald-600 text-white focus-visible:outline-emerald-600"
+                                    : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-offset-0 dark:text-slate-300 dark:ring-slate-800 dark:hover:bg-slate-800"
+                                }`}
+                              >
+                                {page}
+                              </button>
+                            );
+                          }
+                          if (page === 2 || page === totalPages - 1) {
+                            return (
+                              <span
+                                key={page}
+                                className="relative inline-flex items-center px-3 py-1.5 text-xs font-semibold text-slate-400 ring-1 ring-inset ring-slate-200 dark:ring-slate-800"
+                              >
+                                ...
+                              </span>
+                            );
+                          }
+                          return null;
+                        })}
+
+                        <button
+                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                          disabled={currentPage === totalPages}
+                          className="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 dark:ring-slate-800 dark:hover:bg-slate-800 disabled:opacity-40"
+                        >
+                          <span className="sr-only">Next</span>
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </nav>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           ) : (
             <div className="text-center py-12 text-slate-400">
               No racks initialized.

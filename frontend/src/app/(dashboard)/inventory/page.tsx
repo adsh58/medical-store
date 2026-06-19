@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Package, RefreshCw, CircleAlert, Grid, Check, History, Edit2, X } from "lucide-react";
+import { Package, RefreshCw, CircleAlert, Grid, Check, History, Edit2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { Stock } from "@/types";
 import Link from "next/link";
@@ -11,6 +11,9 @@ export default function InventoryPage() {
   const queryClient = useQueryClient();
   const [selectedStockId, setSelectedStockId] = useState<string | null>(null);
   const [targetBoxId, setTargetBoxId] = useState<string>("");
+
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const itemsPerPage = 10;
 
   // Adjustment state
   const [adjustingStockId, setAdjustingStockId] = useState<string | null>(null);
@@ -22,6 +25,12 @@ export default function InventoryPage() {
     queryKey: ["stock"],
     queryFn: () => apiClient.get("/inventory/stock").then(res => res.data)
   });
+
+  const totalItems = stockItems ? stockItems.length : 0;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const currentStockItems = stockItems ? stockItems.slice(startIndex, endIndex) : [];
 
   const { data: boxes } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["boxes-list"],
@@ -140,14 +149,14 @@ export default function InventoryPage() {
                   </td>
                 </tr>
               ) : stockItems && stockItems.length > 0 ? (
-                stockItems.map((item) => {
+                currentStockItems.map((item) => {
                   const isLow = item.current_stock <= item.reorder_level;
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-slate-100">
                         {(item.batch as any).medicine?.name || "Paracetamol 650mg"}
                       </td>
-                      <td className="px-6 py-4 font-medium text-slate-650 dark:text-slate-300">
+                      <td className="px-6 py-4 font-medium text-slate-655 dark:text-slate-300">
                         {item.batch.batch_number}
                       </td>
                       <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-350">
@@ -203,41 +212,51 @@ export default function InventoryPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-6 py-4 font-medium text-slate-400">{item.minimum_stock}</td>
-                      <td className="px-6 py-4 font-medium text-slate-655 dark:text-slate-300">
-                        <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                          <Grid className="h-3 w-3" />
-                          {item.batch.location_coordinate || "Unassigned"}
-                        </span>
-                      </td>
+                      <td className="px-6 py-4 font-semibold text-slate-500">{item.reorder_level}</td>
                       <td className="px-6 py-4">
-                        {isLow ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-600 dark:bg-amber-950/20 dark:text-amber-400">
-                            <CircleAlert className="h-3 w-3" />
-                            Low Stock
+                        {item.batch.location_coordinate ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-450">
+                            <Grid className="h-3 w-3" />
+                            {item.batch.location_coordinate}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400">
-                            Normal
+                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-600 dark:bg-rose-950/20 dark:text-rose-400">
+                            <CircleAlert className="h-3 w-3" />
+                            Unmapped
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {item.current_stock === 0 ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-605 uppercase dark:bg-rose-950/20 dark:text-rose-400">
+                            Out of stock
+                          </span>
+                        ) : isLow ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-605 uppercase dark:bg-amber-950/20 dark:text-amber-400">
+                            Low stock
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-605 uppercase dark:bg-emerald-950/20 dark:text-emerald-400">
+                            Good
                           </span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
                         {selectedStockId === item.id ? (
-                          <div className="flex items-center justify-end gap-1.5">
+                          <div className="flex items-center justify-end gap-2">
                             <select
                               value={targetBoxId}
                               onChange={(e) => setTargetBoxId(e.target.value)}
-                              className="rounded border border-slate-200 bg-white p-1 text-xs dark:border-slate-800 dark:bg-slate-900"
+                              className="rounded border border-slate-200 bg-white p-1 text-xs outline-none dark:border-slate-800 dark:bg-slate-900"
                             >
-                              <option value="">Select Box</option>
-                              {boxes?.map((b) => (
+                              <option value="">Select Box...</option>
+                              {boxes?.map(b => (
                                 <option key={b.id} value={b.id}>{b.name}</option>
                               ))}
                             </select>
                             <button
                               onClick={() => handleMapLocation(item.batch.id)}
-                              className="rounded bg-emerald-600 p-1 text-white hover:bg-emerald-500"
+                              className="rounded bg-emerald-650 p-1 text-white hover:bg-emerald-600"
                             >
                               <Check className="h-3.5 w-3.5" />
                             </button>
@@ -270,6 +289,92 @@ export default function InventoryPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {totalItems > itemsPerPage && (
+          <div className="flex items-center justify-between border-t border-slate-150 bg-white px-6 py-4 dark:border-slate-800/60 dark:bg-slate-900">
+            <div className="flex flex-1 justify-between sm:hidden">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs text-slate-500">
+                  Showing <span className="font-semibold text-slate-700 dark:text-slate-300">{totalItems === 0 ? 0 : startIndex + 1}</span> to{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">{endIndex}</span> of{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">{totalItems}</span> entries
+                </p>
+              </div>
+              <div>
+                <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 dark:ring-slate-800 dark:hover:bg-slate-800 disabled:opacity-40"
+                  >
+                    <span className="sr-only">Previous</span>
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                    if (
+                      page === 1 ||
+                      page === totalPages ||
+                      (page >= currentPage - 1 && page <= currentPage + 1)
+                    ) {
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          aria-current={currentPage === page ? "page" : undefined}
+                          className={`relative inline-flex items-center px-3 py-1.5 text-xs font-semibold focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+                            currentPage === page
+                              ? "z-10 bg-emerald-600 text-white focus-visible:outline-emerald-600"
+                              : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-offset-0 dark:text-slate-300 dark:ring-slate-800 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    }
+                    if (page === 2 || page === totalPages - 1) {
+                      return (
+                        <span
+                          key={page}
+                          className="relative inline-flex items-center px-3 py-1.5 text-xs font-semibold text-slate-400 ring-1 ring-inset ring-slate-200 dark:ring-slate-800"
+                        >
+                          ...
+                        </span>
+                      );
+                    }
+                    return null;
+                  })}
+
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 dark:ring-slate-800 dark:hover:bg-slate-800 disabled:opacity-40"
+                  >
+                    <span className="sr-only">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </nav>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { 
   ShieldAlert, Calendar, Filter, RefreshCw, 
-  ChevronRight, FileText, X, AlertTriangle, Info, AlertOctagon 
+  ChevronRight, FileText, X, AlertTriangle, Info, AlertOctagon, ChevronLeft 
 } from "lucide-react";
 import apiClient from "@/lib/api-client";
 
@@ -39,6 +39,15 @@ export default function SystemLogsPage() {
   // Selected log for detailed modal view
   const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null);
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const itemsPerPage = 10;
+
+  // Reset page when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [logLevel, startDate, endDate]);
+
   // Query logs from backend
   const { data: logs, isLoading, refetch, isRefetching } = useQuery<SystemLog[]>({
     queryKey: ["system-logs", logLevel, startDate, endDate],
@@ -51,6 +60,12 @@ export default function SystemLogsPage() {
       return apiClient.get("/settings/logs", { params }).then(res => res.data);
     }
   });
+
+  const totalItems = logs ? logs.length : 0;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const currentLogs = logs ? logs.slice(startIndex, endIndex) : [];
 
   const handleResetFilters = () => {
     setLogLevel("ERROR");
@@ -191,69 +206,157 @@ export default function SystemLogsPage() {
               No warning or error events match the specified date range and log level filter.
             </p>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm text-slate-500 dark:text-slate-400">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-700 dark:bg-slate-950 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th className="px-6 py-3.5">Timestamp</th>
-                  <th className="px-6 py-3.5">Level</th>
-                  <th className="px-6 py-3.5">Module</th>
-                  <th className="px-6 py-3.5">Message</th>
-                  <th className="px-6 py-3.5">Endpoint</th>
-                  <th className="px-6 py-3.5 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {logs.map((log) => (
-                  <tr 
-                    key={log.id} 
-                    className="hover:bg-slate-50/50 dark:hover:bg-slate-850/50 transition-colors cursor-pointer"
-                    onClick={() => setSelectedLog(log)}
-                  >
-                    <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-700 dark:text-slate-300">
-                      {formatTimestamp(log.created_at)}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      {getLogLevelBadge(log.log_level)}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span className="inline-flex rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50 uppercase tracking-wider">
-                        {log.module}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 max-w-xs truncate text-slate-700 dark:text-slate-300">
-                      {log.message}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 font-mono text-xs">
-                      {log.request_method && (
-                        <span className={`mr-1 px-1 rounded font-bold ${
-                          log.request_method === "POST" ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-950/20" :
-                          log.request_method === "PUT" ? "text-amber-500 bg-amber-50 dark:bg-amber-950/20" :
-                          log.request_method === "DELETE" ? "text-rose-500 bg-rose-50 dark:bg-rose-950/20" :
-                          "text-blue-500 bg-blue-50 dark:bg-blue-950/20"
-                        }`}>
-                          {log.request_method}
-                        </span>
-                      )}
-                      {log.request_path || "-"}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedLog(log);
-                        }}
-                        className="inline-flex items-center gap-1 rounded bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 text-xs font-semibold border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-slate-300 dark:border-slate-700/50"
-                      >
-                        Inspect <ChevronRight size={14} />
-                      </button>
-                    </td>
+         ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-sm text-slate-500 dark:text-slate-400">
+                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-700 dark:bg-slate-950 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="px-6 py-3.5">Timestamp</th>
+                    <th className="px-6 py-3.5">Level</th>
+                    <th className="px-6 py-3.5">Module</th>
+                    <th className="px-6 py-3.5">Message</th>
+                    <th className="px-6 py-3.5">Endpoint</th>
+                    <th className="px-6 py-3.5 text-right">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-880">
+                  {currentLogs.map((log) => (
+                    <tr 
+                      key={log.id} 
+                      className="hover:bg-slate-50/50 dark:hover:bg-slate-850/50 transition-colors cursor-pointer"
+                      onClick={() => setSelectedLog(log)}
+                    >
+                      <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-700 dark:text-slate-300">
+                        {formatTimestamp(log.created_at)}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        {getLogLevelBadge(log.log_level)}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <span className="inline-flex rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/50 uppercase tracking-wider">
+                          {log.module}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 max-w-xs truncate text-slate-700 dark:text-slate-300">
+                        {log.message}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 font-mono text-xs">
+                        {log.request_method && (
+                          <span className={`mr-1 px-1 rounded font-bold ${
+                            log.request_method === "POST" ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-950/20" :
+                            log.request_method === "PUT" ? "text-amber-500 bg-amber-50 dark:bg-amber-950/20" :
+                            log.request_method === "DELETE" ? "text-rose-500 bg-rose-50 dark:bg-rose-950/20" :
+                            "text-blue-500 bg-blue-50 dark:bg-blue-950/20"
+                          }`}>
+                            {log.request_method}
+                          </span>
+                        )}
+                        {log.request_path || "-"}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-right">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedLog(log);
+                          }}
+                          className="inline-flex items-center gap-1 rounded bg-slate-50 hover:bg-slate-100 text-slate-600 px-2 py-1 text-xs font-semibold border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-slate-300 dark:border-slate-700/50"
+                        >
+                          Inspect <ChevronRight size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            {totalItems > itemsPerPage && (
+              <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-4 dark:border-slate-800/60 dark:bg-slate-900">
+                <div className="flex flex-1 justify-between sm:hidden">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+                <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs text-slate-500">
+                      Showing <span className="font-semibold text-slate-705 dark:text-slate-300">{totalItems === 0 ? 0 : startIndex + 1}</span> to{" "}
+                      <span className="font-semibold text-slate-705 dark:text-slate-300">{endIndex}</span> of{" "}
+                      <span className="font-semibold text-slate-705 dark:text-slate-300">{totalItems}</span> entries
+                    </p>
+                  </div>
+                  <div>
+                    <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 dark:ring-slate-800 dark:hover:bg-slate-800 disabled:opacity-40"
+                      >
+                        <span className="sr-only">Previous</span>
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                        if (
+                          page === 1 ||
+                          page === totalPages ||
+                          (page >= currentPage - 1 && page <= currentPage + 1)
+                        ) {
+                          return (
+                            <button
+                              key={page}
+                              onClick={() => setCurrentPage(page)}
+                              aria-current={currentPage === page ? "page" : undefined}
+                              className={`relative inline-flex items-center px-3 py-1.5 text-xs font-semibold focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+                                currentPage === page
+                                  ? "z-10 bg-emerald-600 text-white focus-visible:outline-emerald-600"
+                                  : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-offset-0 dark:text-slate-300 dark:ring-slate-800 dark:hover:bg-slate-800"
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          );
+                        }
+                        if (page === 2 || page === totalPages - 1) {
+                          return (
+                            <span
+                              key={page}
+                              className="relative inline-flex items-center px-3 py-1.5 text-xs font-semibold text-slate-400 ring-1 ring-inset ring-slate-200 dark:ring-slate-800"
+                            >
+                              ...
+                            </span>
+                          );
+                        }
+                        return null;
+                      })}
+
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                        className="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 dark:ring-slate-800 dark:hover:bg-slate-800 disabled:opacity-40"
+                      >
+                        <span className="sr-only">Next</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 

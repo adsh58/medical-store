@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Search, Plus, Pill, RefreshCw, Eye, ChevronDown, ChevronUp, Edit, Trash2 } from "lucide-react";
+import { Search, Plus, Pill, RefreshCw, Eye, ChevronDown, ChevronUp, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import apiClient from "@/lib/api-client";
 import { Medicine } from "@/types";
 
@@ -11,6 +11,14 @@ export default function MedicinesPage() {
   const [search, setSearch] = useState<string>( "");
   const [expandedMeds, setExpandedMeds] = useState<Record<string, boolean>>({});
   const queryClient = useQueryClient();
+
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const itemsPerPage = 10;
+
+  // Reset page when search term changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
 
   const deleteMedicineMutation = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/medicines/${id}`),
@@ -46,6 +54,12 @@ export default function MedicinesPage() {
       return apiClient.get(url).then(res => res.data);
     }
   });
+
+  const totalItems = medicines ? medicines.length : 0;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const currentMedicines = medicines ? medicines.slice(startIndex, endIndex) : [];
 
   return (
     <div className="space-y-6">
@@ -101,7 +115,7 @@ export default function MedicinesPage() {
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
+             <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
               {isLoading ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center">
@@ -109,143 +123,145 @@ export default function MedicinesPage() {
                   </td>
                 </tr>
               ) : medicines && medicines.length > 0 ? (
-                medicines.map((med) => {
-                  const isExpanded = !!expandedMeds[med.id];
-                  const totalStock = med.batches?.reduce((sum, b) => sum + b.current_stock, 0) ?? 0;
-                  
-                  return (
-                    <React.Fragment key={med.id}>
-                      <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 border-b border-slate-100 dark:border-slate-850">
-                        <td className="px-6 py-4">
-                          <div className="flex items-start gap-3">
-                            <button
-                              onClick={() => toggleExpand(med.id)}
-                              className="mt-1 text-slate-400 hover:text-slate-200"
-                            >
-                              {isExpanded ? (
-                                <ChevronUp className="h-4 w-4" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4" />
-                              )}
-                            </button>
-                            <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
-                              <Pill className="h-4 w-4" />
-                            </div>
-                            <div>
-                              <p className="font-semibold text-slate-900 dark:text-slate-100">{med.name}</p>
-                              <p className="text-xs text-slate-400">{med.generic_name}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-slate-600 dark:text-slate-350">{med.company}</td>
-                        <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-300">{med.pack_size}</td>
-                        <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200">{currency}{med.mrp.toFixed(2)}</td>
-                        <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-450">{currency}{med.current_purchase_rate.toFixed(2)}</td>
-                        <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-200">{currency}{med.doctor_selling_rate.toFixed(2)}</td>
-                        <td className="px-6 py-4 font-semibold text-emerald-600 dark:text-emerald-400">{currency}{med.customer_selling_rate.toFixed(2)}</td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => toggleExpand(med.id)}
-                              className="text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                            >
-                              {isExpanded ? "Hide Details" : "Show Details"}
-                            </button>
-                            <Link
-                              href={`/medicines/${med.id}`}
-                              className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                              title="View Details"
-                            >
-                              <Eye className="h-3 w-3" />
-                              Details
-                            </Link>
-                            <Link
-                              href={`/medicines/edit/${med.id}`}
-                              className="inline-flex items-center gap-1 rounded bg-slate-100 p-1.5 text-xs font-semibold text-blue-650 hover:bg-blue-50 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
-                              title="Edit Medicine"
-                            >
-                              <Edit className="h-3.5 w-3.5" />
-                            </Link>
-                            <button
-                              onClick={() => handleDeleteMedicine(med.id)}
-                              className="inline-flex items-center gap-1 rounded bg-slate-100 p-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:bg-slate-800 dark:text-rose-450 dark:hover:bg-rose-950/30"
-                              title="Delete Medicine"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      
-                      {isExpanded && (
-                        <tr className="bg-slate-50/20 dark:bg-slate-900/10">
-                          <td colSpan={8} className="px-6 py-4">
-                            <div className="space-y-3 p-3 rounded-lg border border-slate-100 dark:border-slate-800/85 bg-white dark:bg-slate-950/40">
-                              <div className="flex justify-between items-center">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Inventory Batches</h4>
-                                <span className="text-xs text-slate-400 dark:text-slate-500">Total Available Stock: <strong className="text-emerald-500">{totalStock} units</strong></span>
+                <>
+                  {currentMedicines.map((med) => {
+                    const isExpanded = !!expandedMeds[med.id];
+                    const totalStock = med.batches?.reduce((sum, b) => sum + b.current_stock, 0) ?? 0;
+                    
+                    return (
+                      <React.Fragment key={med.id}>
+                        <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 border-b border-slate-100 dark:border-slate-850">
+                          <td className="px-6 py-4">
+                            <div className="flex items-start gap-3">
+                              <button
+                                onClick={() => toggleExpand(med.id)}
+                                className="mt-1 text-slate-400 hover:text-slate-200"
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp className="h-4 w-4" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" />
+                                )}
+                              </button>
+                              <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
+                                <Pill className="h-4 w-4" />
                               </div>
-                              {med.batches && med.batches.length > 0 ? (
-                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                  {med.batches.map((batch) => {
-                                    const expDate = new Date(batch.expiry_date);
-                                    const today = new Date();
-                                    const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                                    let expColor = "text-emerald-500 bg-emerald-950/20";
-                                    let expStatus = "Normal";
-                                    if (diffDays <= 0) {
-                                      expColor = "text-rose-500 bg-rose-950/20";
-                                      expStatus = "Expired";
-                                    } else if (diffDays <= 30) {
-                                      expColor = "text-rose-400 bg-rose-950/25";
-                                      expStatus = "Critical <30d";
-                                    } else if (diffDays <= 90) {
-                                      expColor = "text-amber-500 bg-amber-950/20";
-                                      expStatus = "Warning <90d";
-                                    }
-
-                                    const isLow = batch.current_stock <= batch.reorder_level;
-
-                                    return (
-                                      <div key={batch.id} className="p-3 border border-slate-100 dark:border-slate-850 rounded-lg space-y-2 bg-slate-50/30 dark:bg-slate-950/20">
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Batch: {batch.batch_number}</span>
-                                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${expColor}`}>{expStatus}</span>
-                                        </div>
-                                        <div className="text-[11px] space-y-1 text-slate-500 dark:text-slate-450">
-                                          <p className="flex justify-between">
-                                            <span>Current Stock:</span>
-                                            <span className={`font-bold ${isLow ? 'text-amber-500' : 'text-slate-700 dark:text-slate-200'}`}>
-                                              {batch.current_stock} units
-                                            </span>
-                                          </p>
-                                          <p className="flex justify-between">
-                                            <span>Safety Level:</span>
-                                            <span>Min: {batch.minimum_stock} • Reorder: {batch.reorder_level}</span>
-                                          </p>
-                                          <p className="flex justify-between">
-                                            <span>Expiry Date:</span>
-                                            <span className="font-semibold">{expDate.toLocaleDateString()}</span>
-                                          </p>
-                                          <p className="flex justify-between border-t border-slate-100 dark:border-slate-800/80 pt-1 mt-1">
-                                            <span>Rack Coordinate:</span>
-                                            <span className="font-bold text-emerald-600 dark:text-emerald-450">{batch.location_coordinate}</span>
-                                          </p>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-slate-400 py-2">No physical inventory batches currently recorded in stock.</p>
-                              )}
+                              <div>
+                                <p className="font-semibold text-slate-900 dark:text-slate-100">{med.name}</p>
+                                <p className="text-xs text-slate-400">{med.generic_name}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-slate-600 dark:text-slate-350">{med.company}</td>
+                          <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-300">{med.pack_size}</td>
+                          <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200">{currency}{med.mrp.toFixed(2)}</td>
+                          <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-450">{currency}{med.current_purchase_rate.toFixed(2)}</td>
+                          <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-200">{currency}{med.doctor_selling_rate.toFixed(2)}</td>
+                          <td className="px-6 py-4 font-semibold text-emerald-600 dark:text-emerald-400">{currency}{med.customer_selling_rate.toFixed(2)}</td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => toggleExpand(med.id)}
+                                className="text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                              >
+                                {isExpanded ? "Hide Details" : "Show Details"}
+                              </button>
+                              <Link
+                                href={`/medicines/${med.id}`}
+                                className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                                title="View Details"
+                              >
+                                <Eye className="h-3 w-3" />
+                                Details
+                              </Link>
+                              <Link
+                                href={`/medicines/edit/${med.id}`}
+                                className="inline-flex items-center gap-1 rounded bg-slate-100 p-1.5 text-xs font-semibold text-blue-650 hover:bg-blue-50 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                                title="Edit Medicine"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </Link>
+                              <button
+                                onClick={() => handleDeleteMedicine(med.id)}
+                                className="inline-flex items-center gap-1 rounded bg-slate-100 p-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:bg-slate-800 dark:text-rose-450 dark:hover:bg-rose-950/30"
+                                title="Delete Medicine"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
+                        
+                        {isExpanded && (
+                          <tr className="bg-slate-50/20 dark:bg-slate-900/10">
+                            <td colSpan={8} className="px-6 py-4">
+                              <div className="space-y-3 p-3 rounded-lg border border-slate-100 dark:border-slate-800/85 bg-white dark:bg-slate-950/40">
+                                <div className="flex justify-between items-center">
+                                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Inventory Batches</h4>
+                                  <span className="text-xs text-slate-400 dark:text-slate-500">Total Available Stock: <strong className="text-emerald-500">{totalStock} units</strong></span>
+                                </div>
+                                {med.batches && med.batches.length > 0 ? (
+                                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                    {med.batches.map((batch) => {
+                                      const expDate = new Date(batch.expiry_date);
+                                      const today = new Date();
+                                      const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                                      let expColor = "text-emerald-500 bg-emerald-950/20";
+                                      let expStatus = "Normal";
+                                      if (diffDays <= 0) {
+                                        expColor = "text-rose-500 bg-rose-950/20";
+                                        expStatus = "Expired";
+                                      } else if (diffDays <= 30) {
+                                        expColor = "text-rose-400 bg-rose-950/25";
+                                        expStatus = "Critical <30d";
+                                      } else if (diffDays <= 90) {
+                                        expColor = "text-amber-500 bg-amber-950/20";
+                                        expStatus = "Warning <90d";
+                                      }
+
+                                      const isLow = batch.current_stock <= batch.reorder_level;
+
+                                      return (
+                                        <div key={batch.id} className="p-3 border border-slate-100 dark:border-slate-850 rounded-lg space-y-2 bg-slate-50/30 dark:bg-slate-950/20">
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Batch: {batch.batch_number}</span>
+                                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${expColor}`}>{expStatus}</span>
+                                          </div>
+                                          <div className="text-[11px] space-y-1 text-slate-500 dark:text-slate-450">
+                                            <p className="flex justify-between">
+                                              <span>Current Stock:</span>
+                                              <span className={`font-bold ${isLow ? 'text-amber-500' : 'text-slate-700 dark:text-slate-200'}`}>
+                                                {batch.current_stock} units
+                                              </span>
+                                            </p>
+                                            <p className="flex justify-between">
+                                              <span>Safety Level:</span>
+                                              <span>Min: {batch.minimum_stock} • Reorder: {batch.reorder_level}</span>
+                                            </p>
+                                            <p className="flex justify-between">
+                                              <span>Expiry Date:</span>
+                                              <span className="font-semibold">{expDate.toLocaleDateString()}</span>
+                                            </p>
+                                            <p className="flex justify-between border-t border-slate-100 dark:border-slate-800/80 pt-1 mt-1">
+                                              <span>Rack Coordinate:</span>
+                                              <span className="font-bold text-emerald-600 dark:text-emerald-450">{batch.location_coordinate}</span>
+                                            </p>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-slate-400 py-2">No physical inventory batches currently recorded in stock.</p>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </>
               ) : (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
@@ -256,6 +272,92 @@ export default function MedicinesPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {totalItems > itemsPerPage && (
+          <div className="flex items-center justify-between border-t border-slate-150 bg-white px-6 py-4 dark:border-slate-800/60 dark:bg-slate-900">
+            <div className="flex flex-1 justify-between sm:hidden">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs text-slate-500">
+                  Showing <span className="font-semibold text-slate-700 dark:text-slate-300">{totalItems === 0 ? 0 : startIndex + 1}</span> to{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">{endIndex}</span> of{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">{totalItems}</span> entries
+                </p>
+              </div>
+              <div>
+                <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 dark:ring-slate-800 dark:hover:bg-slate-800 disabled:opacity-40"
+                  >
+                    <span className="sr-only">Previous</span>
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                    if (
+                      page === 1 ||
+                      page === totalPages ||
+                      (page >= currentPage - 1 && page <= currentPage + 1)
+                    ) {
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          aria-current={currentPage === page ? "page" : undefined}
+                          className={`relative inline-flex items-center px-3 py-1.5 text-xs font-semibold focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+                            currentPage === page
+                              ? "z-10 bg-emerald-600 text-white focus-visible:outline-emerald-600"
+                              : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-offset-0 dark:text-slate-300 dark:ring-slate-800 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    }
+                    if (page === 2 || page === totalPages - 1) {
+                      return (
+                        <span
+                          key={page}
+                          className="relative inline-flex items-center px-3 py-1.5 text-xs font-semibold text-slate-400 ring-1 ring-inset ring-slate-200 dark:ring-slate-800"
+                        >
+                          ...
+                        </span>
+                      );
+                    }
+                    return null;
+                  })}
+
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 dark:ring-slate-800 dark:hover:bg-slate-800 disabled:opacity-40"
+                  >
+                    <span className="sr-only">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </nav>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
