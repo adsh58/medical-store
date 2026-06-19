@@ -113,26 +113,157 @@ class AIService:
                     "Ensure dates are strictly in YYYY-MM-DD format."
                 )
 
-                response = None
+                response_text = None
                 errors = []
+                
+                # Define a clean, manual schema dictionary to prevent Pydantic default-injection issues
+                extracted_invoice_schema = {
+                    "type": "OBJECT",
+                    "properties": {
+                        "invoice_number": {
+                            "type": "STRING",
+                            "description": "The invoice number or billing number found on the invoice"
+                        },
+                        "supplier_name": {
+                            "type": "STRING",
+                            "description": "The name of the supplying agency, company, or distributor"
+                        },
+                        "invoice_date": {
+                            "type": "STRING",
+                            "description": "The invoice issue date in YYYY-MM-DD format"
+                        },
+                        "items": {
+                            "type": "ARRAY",
+                            "description": "List of medicine line items",
+                            "items": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "medicine_name": {
+                                        "type": "STRING",
+                                        "description": "The name of the medicine"
+                                    },
+                                    "batch_no": {
+                                        "type": "STRING",
+                                        "description": "The batch number of the medicine"
+                                    },
+                                    "expiry_date": {
+                                        "type": "STRING",
+                                        "description": "The expiry date of the medicine in YYYY-MM-DD format. If only MM/YY is given, assume last day of that month"
+                                    },
+                                    "quantity": {
+                                        "type": "INTEGER",
+                                        "description": "The quantity of the medicine purchased"
+                                    },
+                                    "free_quantity": {
+                                        "type": "INTEGER",
+                                        "description": "The free quantity of medicine items included in the invoice. If not specified, return 0."
+                                    },
+                                    "purchase_rate": {
+                                        "type": "NUMBER",
+                                        "description": "The purchase rate per unit or pack size"
+                                    },
+                                    "mrp": {
+                                        "type": "NUMBER",
+                                        "description": "The maximum retail price (MRP) of the medicine per unit or pack size"
+                                    },
+                                    "gst": {
+                                        "type": "NUMBER",
+                                        "description": "The GST rate percentage applied to this medicine, e.g. 12.0 or 18.0. If not specified, return 0.0."
+                                    },
+                                    "company": {
+                                        "type": "STRING",
+                                        "description": "The manufacturer/company name of the medicine if available or known. If not present, return empty string."
+                                    },
+                                    "pack_size": {
+                                        "type": "STRING",
+                                        "description": "The pack configuration or packaging unit, e.g. 10s, 16x500ml, 15g, if available or known. If not present, return empty string."
+                                    },
+                                    "generic_name": {
+                                        "type": "STRING",
+                                        "description": "The generic active ingredient/chemical name of the medicine if available or known. If not present, return empty string."
+                                    }
+                                },
+                                "required": [
+                                    "medicine_name",
+                                    "batch_no",
+                                    "expiry_date",
+                                    "quantity",
+                                    "free_quantity",
+                                    "purchase_rate",
+                                    "mrp",
+                                    "gst",
+                                    "company",
+                                    "pack_size",
+                                    "generic_name"
+                                ]
+                            }
+                        }
+                    },
+                    "required": ["invoice_number", "supplier_name", "invoice_date", "items"]
+                }
+
                 for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-1.0-pro"]:
                     try:
-                        logger.info(f"Attempting content generation using: {model_name}")
+                        logger.info(f"Attempting content generation using schema mode on: {model_name}")
                         model = genai.GenerativeModel(model_name)
+                        
+                        logger.info(f"Selected model: {model_name}")
+                        logger.info(f"Request payload: prompt='{prompt}', media_part_keys={list(media_part.keys())}")
+                        logger.info(f"Schema payload: {extracted_invoice_schema}")
+                        
                         response = model.generate_content(
                             [prompt, media_part],
                             generation_config=genai.GenerationConfig(
                                 response_mime_type="application/json",
-                                response_schema=ExtractedInvoice,
+                                response_schema=extracted_invoice_schema,
                                 temperature=0.0
                             )
                         )
+                        response_text = response.text
+                        logger.info(f"Gemini response: {response_text}")
                         break
                     except Exception as e:
-                        logger.warning(f"Content generation failed with model {model_name}: {str(e)}")
-                        errors.append(f"{model_name}: {str(e)}")
+                        logger.warning(f"Schema mode failed with model {model_name}: {str(e)}")
+                        logger.exception(f"Gemini exception stack trace for model {model_name} schema mode:")
+                        errors.append(f"{model_name} (schema mode): {str(e)}")
+                        
+                        # Fallback plain JSON strategy for this model
+                        try:
+                            logger.info(f"Attempting content generation using fallback plain JSON mode on: {model_name}")
+                            fallback_prompt = (
+                                prompt + 
+                                "\n\nIMPORTANT: Return your response strictly as a JSON object matching this schema. "
+                                "Do not include any extra text, markdown formatting (like ```json), or explanations. "
+                                f"Schema structure:\n{extracted_invoice_schema}"
+                            )
+                            response = model.generate_content(
+                                [fallback_prompt, media_part],
+                                generation_config=genai.GenerationConfig(
+                                    response_mime_type="application/json",
+                                    temperature=0.0
+                                )
+                            )
+                            resp_text = response.text.strip()
+                            if resp_text.startswith("```json"):
+                                resp_text = resp_text[7:]
+                            if resp_text.endswith("```"):
+                                resp_text = resp_text[:-3]
+                            resp_text = resp_text.strip()
+                            
+                            logger.info(f"Gemini fallback response text: {resp_text}")
+                            
+                            # Validate JSON parses correctly
+                            import json
+                            json.loads(resp_text)
+                            
+                            response_text = resp_text
+                            break
+                        except Exception as fe:
+                            logger.warning(f"Fallback plain JSON mode failed with model {model_name}: {str(fe)}")
+                            logger.exception(f"Gemini exception stack trace for model {model_name} fallback mode:")
+                            errors.append(f"{model_name} (fallback mode): {str(fe)}")
                 
-                if response is None:
+                if response_text is None:
                     try:
                         available_models = [m.name for m in genai.list_models()]
                         logger.error(f"Available models for this API key: {available_models}")
@@ -141,7 +272,7 @@ class AIService:
                     raise BadRequestException(f"AI Extraction failed on all fallback models: {'; '.join(errors)}")
 
                 # Parsed schema validation
-                extracted_invoice = ExtractedInvoice.model_validate_json(response.text)
+                extracted_invoice = ExtractedInvoice.model_validate_json(response_text)
                 logger.info(f"Gemini API extracted {len(extracted_invoice.items)} items successfully.")
 
             except Exception as e:
@@ -349,16 +480,78 @@ class AIService:
                     f"Return the medicine ID, a matching reason explaining why it matches, and a confidence score (0.0 to 1.0)."
                 )
 
-                response = model.generate_content(
-                    prompt,
-                    generation_config=genai.GenerationConfig(
-                        response_mime_type="application/json",
-                        response_schema=GeminiAssistantResponse,
-                        temperature=0.0
-                    )
-                )
+                # Manual schema definition to prevent Pydantic translation issues
+                assistant_schema = {
+                    "type": "OBJECT",
+                    "properties": {
+                        "matches": {
+                            "type": "ARRAY",
+                            "items": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "medicine_id": {
+                                        "type": "STRING",
+                                        "description": "UUID string of matching medicine"
+                                    },
+                                    "matching_reason": {
+                                        "type": "STRING",
+                                        "description": "Brief reason explaining why it matches the search query"
+                                    },
+                                    "confidence": {
+                                        "type": "NUMBER",
+                                        "description": "Match confidence score between 0.0 and 1.0"
+                                    }
+                                },
+                                "required": ["medicine_id", "matching_reason", "confidence"]
+                            }
+                        }
+                    },
+                    "required": ["matches"]
+                }
 
-                gemini_res = GeminiAssistantResponse.model_validate_json(response.text)
+                response_text = None
+                try:
+                    logger.info("Attempting assistant search content generation using schema mode")
+                    response = model.generate_content(
+                        prompt,
+                        generation_config=genai.GenerationConfig(
+                            response_mime_type="application/json",
+                            response_schema=assistant_schema,
+                            temperature=0.0
+                        )
+                    )
+                    response_text = response.text
+                except Exception as e:
+                    logger.warning(f"Assistant search schema mode failed, using fallback: {str(e)}")
+                    logger.exception("Assistant search schema mode stack trace:")
+                    
+                    fallback_prompt = (
+                        prompt +
+                        "\n\nIMPORTANT: Return your response strictly as a JSON object matching this schema. "
+                        "Do not include any extra text, markdown formatting (like ```json), or explanations. "
+                        f"Schema structure:\n{assistant_schema}"
+                    )
+                    response = model.generate_content(
+                        fallback_prompt,
+                        generation_config=genai.GenerationConfig(
+                            response_mime_type="application/json",
+                            temperature=0.0
+                        )
+                    )
+                    resp_text = response.text.strip()
+                    if resp_text.startswith("```json"):
+                        resp_text = resp_text[7:]
+                    if resp_text.endswith("```"):
+                        resp_text = resp_text[:-3]
+                    resp_text = resp_text.strip()
+                    
+                    # Validate JSON
+                    import json
+                    json.loads(resp_text)
+                    response_text = resp_text
+
+                logger.info(f"Assistant search response text: {response_text}")
+                gemini_res = GeminiAssistantResponse.model_validate_json(response_text)
                 
                 # Join with full database objects
                 for match in gemini_res.matches:
