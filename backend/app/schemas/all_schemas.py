@@ -179,6 +179,7 @@ class BatchResponse(BaseModel):
     mrp: float
     purchase_rate: float
     location_coordinate: Optional[str] = "Unassigned"
+    medicine: Optional[MedicineResponse] = None
     model_config = ConfigDict(from_attributes=True)
 
 class StockResponse(BaseModel):

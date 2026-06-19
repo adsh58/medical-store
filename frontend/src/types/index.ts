@@ -136,6 +136,7 @@ export interface Batch {
   mrp: number;
   purchase_rate: number;
   location_coordinate?: string;
+  medicine?: Medicine;
 }
 
 export interface Stock {

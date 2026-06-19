@@ -154,7 +154,7 @@ export default function InventoryPage() {
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
                       <td className="px-6 py-4 font-semibold text-slate-900 dark:text-slate-100">
-                        {(item.batch as any).medicine?.name || "Paracetamol 650mg"}
+                        {item.batch.medicine?.name || "Unknown Medicine"}
                       </td>
                       <td className="px-6 py-4 font-medium text-slate-655 dark:text-slate-300">
                         {item.batch.batch_number}
