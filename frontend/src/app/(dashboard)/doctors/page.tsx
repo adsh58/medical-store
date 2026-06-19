@@ -2,17 +2,18 @@
 
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Trash2, Edit, Save, X, UserCheck, ShieldAlert, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, Trash2, Edit, Save, X, UserCheck, ShieldAlert, CheckCircle2, ChevronLeft, ChevronRight, Phone, MapPin, Building, ToggleLeft, ToggleRight } from "lucide-react";
 import apiClient from "@/lib/api-client";
 
 interface Doctor {
   id: string;
-  email: string;
-  full_name: string;
-  is_active: boolean;
-  role: {
-    name: string;
-  };
+  store_id: string;
+  name: string;
+  mobile: string;
+  clinic_name?: string;
+  address?: string;
+  active: boolean;
+  created_at: string;
 }
 
 export default function DoctorsPage() {
@@ -20,15 +21,18 @@ export default function DoctorsPage() {
   const [search, setSearch] = useState("");
   
   // Create Form state
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [clinicName, setClinicName] = useState("");
+  const [address, setAddress] = useState("");
   
   // Edit Form state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editPassword, setEditPassword] = useState("");
+  const [editMobile, setEditMobile] = useState("");
+  const [editClinicName, setEditClinicName] = useState("");
+  const [editAddress, setEditAddress] = useState("");
+  const [editActive, setEditActive] = useState(true);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -45,7 +49,7 @@ export default function DoctorsPage() {
   const { data: doctors, isLoading } = useQuery<Doctor[]>({
     queryKey: ["doctors", search],
     queryFn: () => {
-      const url = search ? `/auth/doctors?search=${encodeURIComponent(search)}` : "/auth/doctors";
+      const url = search ? `/doctors?search=${encodeURIComponent(search)}` : "/doctors";
       return apiClient.get(url).then(res => res.data);
     }
   });
@@ -58,12 +62,13 @@ export default function DoctorsPage() {
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: (newDoc: any) => apiClient.post("/auth/doctors", newDoc).then(res => res.data),
+    mutationFn: (newDoc: Partial<Doctor>) => apiClient.post("/doctors", newDoc).then(res => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["doctors"] });
-      setFullName("");
-      setEmail("");
-      setPassword("");
+      setName("");
+      setMobile("");
+      setClinicName("");
+      setAddress("");
       setSuccess("Doctor profile added successfully!");
       setTimeout(() => setSuccess(null), 3000);
       setError(null);
@@ -74,12 +79,11 @@ export default function DoctorsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (updated: any) => 
-      apiClient.put(`/auth/doctors/${updated.id}`, { full_name: updated.full_name, email: updated.email, password: updated.password || undefined }).then(res => res.data),
+    mutationFn: (updated: Partial<Doctor>) => 
+      apiClient.put(`/doctors/${updated.id}`, updated).then(res => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["doctors"] });
       setEditingId(null);
-      setEditPassword("");
       setSuccess("Doctor details updated successfully!");
       setTimeout(() => setSuccess(null), 3000);
       setError(null);
@@ -90,7 +94,7 @@ export default function DoctorsPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/auth/doctors/${id}`).then(res => res.data),
+    mutationFn: (id: string) => apiClient.delete(`/doctors/${id}`).then(res => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["doctors"] });
       setSuccess("Doctor deleted successfully!");
@@ -104,25 +108,34 @@ export default function DoctorsPage() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !email || !password) return;
+    if (!name || !mobile) return;
     createMutation.mutate({
-      full_name: fullName,
-      email,
-      password,
-      role_name: "DOCTOR"
+      name,
+      mobile,
+      clinic_name: clinicName || undefined,
+      address: address || undefined
     });
   };
 
   const handleStartEdit = (doc: Doctor) => {
     setEditingId(doc.id);
-    setEditName(doc.full_name);
-    setEditEmail(doc.email);
-    setEditPassword("");
+    setEditName(doc.name);
+    setEditMobile(doc.mobile);
+    setEditClinicName(doc.clinic_name || "");
+    setEditAddress(doc.address || "");
+    setEditActive(doc.active);
   };
 
   const handleSaveEdit = (id: string) => {
-    if (!editName || !editEmail) return;
-    updateMutation.mutate({ id, full_name: editName, email: editEmail, password: editPassword });
+    if (!editName || !editMobile) return;
+    updateMutation.mutate({ 
+      id, 
+      name: editName, 
+      mobile: editMobile, 
+      clinic_name: editClinicName || undefined, 
+      address: editAddress || undefined,
+      active: editActive
+    });
   };
 
   const handleDelete = (id: string) => {
@@ -131,26 +144,35 @@ export default function DoctorsPage() {
     }
   };
 
+  const toggleDoctorActive = (doc: Doctor) => {
+    updateMutation.mutate({
+      id: doc.id,
+      active: !doc.active
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50 flex items-center gap-2">
-          <UserCheck className="h-6 w-6 text-emerald-500" />
-          Doctor Registry
-        </h1>
-        <p className="text-sm text-slate-500">Manage doctor profiles referred for retail checkouts.</p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/10 shadow-sm">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50 flex items-center gap-2">
+            <UserCheck className="h-6 w-6 text-emerald-500" />
+            Doctor Registry
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage doctor profiles referred for retail checkouts and sales margin settings.</p>
+        </div>
       </div>
 
       {success && (
-        <div className="flex items-center gap-2 rounded-lg bg-emerald-950/35 border border-emerald-900/50 p-3 text-xs text-emerald-450 max-w-2xl">
+        <div className="flex items-center gap-2 rounded-lg bg-emerald-950/35 border border-emerald-900/50 p-3 text-xs text-emerald-450 max-w-2xl animate-in fade-in duration-300">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <p>{success}</p>
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg bg-rose-950/35 border border-rose-900/50 p-3 text-xs text-rose-450 max-w-2xl">
+        <div className="flex items-center gap-2 rounded-lg bg-rose-950/35 border border-rose-900/50 p-3 text-xs text-rose-450 max-w-2xl animate-in fade-in duration-300">
           <ShieldAlert className="h-4 w-4 shrink-0" />
           <p>{error}</p>
         </div>
@@ -162,51 +184,63 @@ export default function DoctorsPage() {
           <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4">Add Doctor Profile</h2>
           <form onSubmit={handleCreate} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-450 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs font-semibold text-slate-450 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                 Full Name *
               </label>
               <input
                 type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="Dr. John Doe"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs outline-none transition-all focus:border-emerald-500 dark:border-slate-850 dark:bg-slate-950 dark:text-slate-200"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-450 uppercase tracking-wider mb-1.5">
-                Email Address *
+              <label className="block text-xs font-semibold text-slate-450 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                Mobile Number *
               </label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="john.doe@example.com"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950"
+                type="text"
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value)}
+                placeholder="9876543210"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs outline-none transition-all focus:border-emerald-500 dark:border-slate-850 dark:bg-slate-950 dark:text-slate-200"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-455 uppercase tracking-wider mb-1.5">
-                Temporary Password *
+              <label className="block text-xs font-semibold text-slate-450 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                Clinic Name
               </label>
               <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950"
-                required
+                type="text"
+                value={clinicName}
+                onChange={(e) => setClinicName(e.target.value)}
+                placeholder="City Health Care"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs outline-none transition-all focus:border-emerald-500 dark:border-slate-850 dark:bg-slate-950 dark:text-slate-200"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-450 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                Address / Location
+              </label>
+              <textarea
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Clinic Address..."
+                rows={3}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs outline-none transition-all focus:border-emerald-500 dark:border-slate-850 dark:bg-slate-950 dark:text-slate-200"
               />
             </div>
 
             <button
               type="submit"
               disabled={createMutation.isPending}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2 text-xs font-semibold text-white hover:bg-emerald-50 transition-colors"
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 py-2 text-xs font-semibold text-white transition-colors cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
               {createMutation.isPending ? "Adding..." : "Add Doctor"}
@@ -222,8 +256,8 @@ export default function DoctorsPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search doctor by name..."
-              className="w-full rounded-lg border border-slate-200 bg-white py-2 pr-4 pl-10 text-xs outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-900"
+              placeholder="Search doctor by name, clinic, or mobile..."
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 pr-4 pl-10 text-xs outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
             />
           </div>
 
@@ -233,15 +267,17 @@ export default function DoctorsPage() {
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-slate-400 font-semibold dark:border-slate-800 dark:bg-slate-900/60">
                     <th className="px-6 py-3">Full Name</th>
-                    <th className="px-6 py-3">Email Address</th>
-                    <th className="px-6 py-3">Change Password</th>
+                    <th className="px-6 py-3">Mobile</th>
+                    <th className="px-6 py-3">Clinic Name</th>
+                    <th className="px-6 py-3">Address</th>
+                    <th className="px-6 py-3 text-center">Status</th>
                     <th className="px-6 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-880/80">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={4} className="px-6 py-10 text-center">
+                      <td colSpan={6} className="px-6 py-10 text-center">
                         <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
                       </td>
                     </tr>
@@ -250,57 +286,122 @@ export default function DoctorsPage() {
                       const isEditing = editingId === doc.id;
                       return (
                         <tr key={doc.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/10">
+                          {/* Name */}
                           <td className="px-6 py-4 font-semibold text-slate-900 dark:text-slate-200">
                             {isEditing ? (
                               <input
                                 type="text"
                                 value={editName}
                                 onChange={(e) => setEditName(e.target.value)}
-                                className="rounded border border-slate-250 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-950 w-full"
+                                className="rounded border border-slate-250 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 w-full"
                               />
                             ) : (
-                              doc.full_name
+                              doc.name
                             )}
                           </td>
-                          <td className="px-6 py-4 text-slate-500 font-medium">
+                          {/* Mobile */}
+                          <td className="px-6 py-4 text-slate-650 dark:text-slate-400 font-medium">
                             {isEditing ? (
                               <input
-                                type="email"
-                                value={editEmail}
-                                onChange={(e) => setEditEmail(e.target.value)}
-                                className="rounded border border-slate-250 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-950 w-full"
+                                type="text"
+                                value={editMobile}
+                                onChange={(e) => setEditMobile(e.target.value)}
+                                className="rounded border border-slate-250 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 w-full"
                               />
                             ) : (
-                              doc.email
+                              <span className="flex items-center gap-1">
+                                <Phone className="h-3 w-3 text-slate-400" />
+                                {doc.mobile}
+                              </span>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-slate-400">
+                          {/* Clinic Name */}
+                          <td className="px-6 py-4 text-slate-500 dark:text-slate-400">
                             {isEditing ? (
                               <input
-                                type="password"
-                                value={editPassword}
-                                onChange={(e) => setEditPassword(e.target.value)}
-                                placeholder="New Password (optional)"
-                                className="rounded border border-slate-250 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-950 w-full"
+                                type="text"
+                                value={editClinicName}
+                                onChange={(e) => setEditClinicName(e.target.value)}
+                                className="rounded border border-slate-250 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 w-full"
                               />
                             ) : (
-                              <span className="italic text-slate-350">Unchanged</span>
+                              doc.clinic_name ? (
+                                <span className="flex items-center gap-1">
+                                  <Building className="h-3 w-3 text-slate-400" />
+                                  {doc.clinic_name}
+                                </span>
+                              ) : (
+                                <span className="text-slate-350 italic">-</span>
+                              )
                             )}
                           </td>
+                          {/* Address */}
+                          <td className="px-6 py-4 text-slate-500 dark:text-slate-400 max-w-xs truncate">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editAddress}
+                                onChange={(e) => setEditAddress(e.target.value)}
+                                className="rounded border border-slate-250 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 w-full"
+                              />
+                            ) : (
+                              doc.address ? (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                                  {doc.address}
+                                </span>
+                              ) : (
+                                <span className="text-slate-350 italic">-</span>
+                              )
+                            )}
+                          </td>
+                          {/* Status */}
+                          <td className="px-6 py-4 text-center">
+                            {isEditing ? (
+                              <button
+                                type="button"
+                                onClick={() => setEditActive(!editActive)}
+                                className="inline-flex cursor-pointer focus:outline-none"
+                              >
+                                {editActive ? (
+                                  <ToggleRight className="h-6 w-6 text-emerald-500" />
+                                ) : (
+                                  <ToggleLeft className="h-6 w-6 text-slate-400" />
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => toggleDoctorActive(doc)}
+                                className="inline-flex cursor-pointer focus:outline-none"
+                              >
+                                {doc.active ? (
+                                  <span className="inline-flex items-center rounded-full bg-emerald-950/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-450 border border-emerald-900/50">
+                                    Active
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-full bg-slate-800/40 px-2 py-0.5 text-[10px] font-semibold text-slate-450 border border-slate-700/50">
+                                    Inactive
+                                  </span>
+                                )}
+                              </button>
+                            )}
+                          </td>
+                          {/* Actions */}
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
                               {isEditing ? (
                                 <>
                                   <button
                                     onClick={() => handleSaveEdit(doc.id)}
-                                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded"
+                                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded cursor-pointer"
                                     title="Save"
                                   >
                                     <Save className="h-4 w-4" />
                                   </button>
                                   <button
                                     onClick={() => setEditingId(null)}
-                                    className="p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
+                                    className="p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
                                     title="Cancel"
                                   >
                                     <X className="h-4 w-4" />
@@ -310,14 +411,14 @@ export default function DoctorsPage() {
                                 <>
                                   <button
                                     onClick={() => handleStartEdit(doc)}
-                                    className="p-1.5 text-slate-455 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
+                                    className="p-1.5 text-slate-455 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
                                     title="Edit"
                                   >
                                     <Edit className="h-4 w-4" />
                                   </button>
                                   <button
                                     onClick={() => handleDelete(doc.id)}
-                                    className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded"
+                                    className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded cursor-pointer"
                                     title="Delete"
                                   >
                                     <Trash2 className="h-4 w-4" />
@@ -331,8 +432,8 @@ export default function DoctorsPage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={4} className="px-6 py-8 text-center text-slate-400">
-                        No doctors registered yet.
+                      <td colSpan={6} className="px-6 py-8 text-center text-slate-450">
+                        No doctors registered yet in this store registry.
                       </td>
                     </tr>
                   )}
@@ -374,7 +475,6 @@ export default function DoctorsPage() {
                         disabled={currentPage === 1}
                         className="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 dark:ring-slate-800 dark:hover:bg-slate-800 disabled:opacity-40"
                       >
-                        <span className="sr-only">Previous</span>
                         <ChevronLeft className="h-4 w-4" />
                       </button>
                       
@@ -388,11 +488,10 @@ export default function DoctorsPage() {
                             <button
                               key={page}
                               onClick={() => setCurrentPage(page)}
-                              aria-current={currentPage === page ? "page" : undefined}
-                              className={`relative inline-flex items-center px-3 py-1.5 text-xs font-semibold focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+                              className={`relative inline-flex items-center px-3 py-1.5 text-xs font-semibold focus:z-20 ${
                                 currentPage === page
-                                  ? "z-10 bg-emerald-600 text-white focus-visible:outline-emerald-600"
-                                  : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-offset-0 dark:text-slate-300 dark:ring-slate-800 dark:hover:bg-slate-800"
+                                  ? "z-10 bg-emerald-600 text-white"
+                                  : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 dark:text-slate-300 dark:ring-slate-800 dark:hover:bg-slate-800"
                               }`}
                             >
                               {page}
@@ -417,7 +516,6 @@ export default function DoctorsPage() {
                         disabled={currentPage === totalPages}
                         className="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:z-20 focus:outline-offset-0 dark:ring-slate-800 dark:hover:bg-slate-800 disabled:opacity-40"
                       >
-                        <span className="sr-only">Next</span>
                         <ChevronRight className="h-4 w-4" />
                       </button>
                     </nav>

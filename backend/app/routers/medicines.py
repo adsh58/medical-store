@@ -13,7 +13,8 @@ from app.services.all_services import medicine_service
 from app.services.ai_service import ai_service
 from app.repositories.all_repos import medicine_repo, price_history_repo, category_repo
 from app.core.dependencies import RoleChecker, get_current_user
-from app.core.exceptions import NotFoundException
+from app.models.all_models import User, MasterCategory
+from app.core.exceptions import NotFoundException, BadRequestException
 from app.core.cache import query_cache
 
 router = APIRouter(prefix="/medicines", tags=["Medicines Management"])
@@ -25,7 +26,6 @@ async def create_category(
     db: AsyncSession = Depends(get_db),
     _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
-    from app.core.exceptions import BadRequestException
     existing = await category_repo.get_by_name(db, category_in.name)
     if existing:
         raise BadRequestException("Category with this name already exists")
@@ -37,7 +37,8 @@ async def create_category(
 @router.get("/categories", response_model=List[MedicineCategoryResponse])
 async def list_categories(
     search: Optional[str] = Query(None, description="Search category name or description"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     cache_key = f"categories:list:{search or 'all'}"
     cached = query_cache.get(cache_key)
@@ -47,12 +48,11 @@ async def list_categories(
     if search:
         from sqlalchemy import or_
         from sqlalchemy.future import select
-        from app.models.all_models import MedicineCategory
-        query = select(MedicineCategory).filter(
-            MedicineCategory.deleted_at == None,
+        query = select(MasterCategory).filter(
+            MasterCategory.deleted_at == None,
             or_(
-                MedicineCategory.name.ilike(f"%{search}%"),
-                MedicineCategory.description.ilike(f"%{search}%")
+                MasterCategory.name.ilike(f"%{search}%"),
+                MasterCategory.description.ilike(f"%{search}%")
             )
         )
         res = await db.execute(query)
@@ -71,7 +71,6 @@ async def update_category(
     db: AsyncSession = Depends(get_db),
     _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
-    from app.core.exceptions import BadRequestException
     cat = await category_repo.get(db, id)
     if not cat:
         raise NotFoundException("Category not found")
@@ -106,61 +105,75 @@ async def update_medicine(
     id: uuid.UUID,
     medicine_in: MedicineUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
-    checker = RoleChecker(["ADMIN", "MANAGER"])
-    checker(current_user)
-    
-    med = await medicine_service.update_medicine(db, id, medicine_in, current_user.id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    med = await medicine_service.update_medicine(db, id, medicine_in, store_id=current_user.store_id, user_id=current_user.id)
     await db.commit()
     query_cache.delete("medicines:list")
-    return await medicine_repo.get(db, med.id)
+    return await medicine_repo.get(db, med.id, store_id=current_user.store_id)
 
 
 @router.post("/", response_model=MedicineResponse, status_code=status.HTTP_201_CREATED)
 async def create_medicine(
     medicine_in: MedicineCreate,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
     """
-    Add a new medicine to the central catalog catalog list.
+    Add a new medicine to the store's catalog list.
     """
-    med = await medicine_service.create_medicine(db, medicine_in)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    med = await medicine_service.create_medicine(db, medicine_in, store_id=current_user.store_id, user_id=current_user.id)
     await db.commit()
     query_cache.delete("medicines:list")
-    return await medicine_repo.get(db, med.id)
+    return await medicine_repo.get(db, med.id, store_id=current_user.store_id)
 
 @router.get("/", response_model=List[MedicineResponse])
 async def list_medicines(
     search: Optional[str] = Query(None, description="Search term matching name, generic name, or company"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Retrieve paginated medicine records, optionally filtered by keyword search.
+    Retrieve paginated medicine records, optionally filtered by keyword search in user's store.
     """
-    cache_key = f"medicines:list:{search or 'all'}:{skip}:{limit}"
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    cache_key = f"medicines:list:{current_user.store_id}:{search or 'all'}:{skip}:{limit}"
     cached = query_cache.get(cache_key)
     if cached is not None:
         return cached
 
     if search:
-        meds = await medicine_repo.search(db, search, limit=limit)
+        meds = await medicine_repo.search(db, search, store_id=current_user.store_id, limit=limit)
     else:
-        meds = await medicine_repo.get_multi(db, skip=skip, limit=limit)
+        meds = await medicine_repo.get_multi(db, skip=skip, limit=limit, store_id=current_user.store_id)
         
     res_data = [MedicineResponse.model_validate(m) for m in meds]
     query_cache.set(cache_key, res_data)
     return res_data
 
 @router.get("/{id}", response_model=MedicineResponse)
-async def get_medicine(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_medicine(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Fetch a single medicine record details by UUID.
     """
-    med = await medicine_repo.get(db, id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    med = await medicine_repo.get(db, id, store_id=current_user.store_id)
     if not med:
         raise NotFoundException("Medicine not found")
     return med
@@ -169,40 +182,55 @@ async def get_medicine(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 async def delete_medicine(
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
     """
     Soft-delete a medicine record by ID.
     """
-    med = await medicine_repo.get(db, id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    med = await medicine_repo.get(db, id, store_id=current_user.store_id)
     if not med:
         raise NotFoundException("Medicine not found")
-    await medicine_repo.remove(db, id=id)
+        
+    await medicine_repo.remove(db, id=id, store_id=current_user.store_id)
     await db.commit()
     query_cache.delete("medicines:list")
     return {"success": True, "message": "Medicine deleted successfully"}
 
 @router.get("/{id}/price-history", response_model=List[PriceHistoryResponse])
-async def get_price_history(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_price_history(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Audit log of doctor and customer retail rate changes for a specific medicine.
     """
-    med = await medicine_repo.get(db, id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    med = await medicine_repo.get(db, id, store_id=current_user.store_id)
     if not med:
         raise NotFoundException("Medicine not found")
+        
     return await price_history_repo.get_by_medicine(db, id)
 
 @router.post("/assistant-search", response_model=AssistantSearchResponse)
 async def assistant_search(
     request: AssistantSearchRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Medicine Search Assistant. Identifies brand names using generic ingredients, symptoms, or conditions.
     """
-    matches = await ai_service.search_assistant(db, request.query)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    matches = await ai_service.search_assistant(db, request.query, store_id=current_user.store_id)
     
-    # Map matched data structure to schema output
     items = []
     for match in matches:
         med = match["medicine"]
@@ -216,6 +244,9 @@ async def assistant_search(
             "current_purchase_rate": float(med.current_purchase_rate),
             "doctor_selling_rate": float(med.doctor_selling_rate),
             "customer_selling_rate": float(med.customer_selling_rate),
+            "purchase_rate": float(med.purchase_rate),
+            "doctor_rate": float(med.doctor_rate),
+            "customer_rate": float(med.customer_rate),
             "matching_reason": match["matching_reason"],
             "confidence": float(match["confidence"])
         })

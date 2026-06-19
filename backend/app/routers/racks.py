@@ -10,8 +10,9 @@ from app.schemas.all_schemas import (
 )
 from app.services.all_services import rack_service
 from app.repositories.all_repos import rack_repo, shelf_repo, box_repo
-from app.core.dependencies import RoleChecker
-from app.core.exceptions import NotFoundException
+from app.core.dependencies import RoleChecker, get_current_user
+from app.core.exceptions import NotFoundException, BadRequestException
+from app.models.all_models import User
 
 router = APIRouter(prefix="/racks", tags=["Rack & Box Location Management"])
 
@@ -19,18 +20,24 @@ router = APIRouter(prefix="/racks", tags=["Rack & Box Location Management"])
 async def create_rack(
     rack_in: RackCreate,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
     """
     Establish a new storage Rack (e.g. Rack A).
     """
-    rack = await rack_service.create_rack(db, rack_in)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    rack = await rack_service.create_rack(db, rack_in, store_id=current_user.store_id, user_id=current_user.id)
     await db.commit()
     
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
     from app.models.all_models import Rack, Shelf
-    query = select(Rack).filter(Rack.id == rack.id).options(
+    query = select(Rack).filter(
+        Rack.id == rack.id,
+        Rack.store_id == current_user.store_id
+    ).options(
         selectinload(Rack.shelves).selectinload(Shelf.boxes)
     )
     res = await db.execute(query)
@@ -40,18 +47,24 @@ async def create_rack(
 async def create_shelf(
     shelf_in: ShelfCreate,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
     """
     Establish a sub-shelf location inside a Rack (e.g. Shelf A1 under Rack A).
     """
-    shelf = await rack_service.create_shelf(db, shelf_in)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    shelf = await rack_service.create_shelf(db, shelf_in, store_id=current_user.store_id, user_id=current_user.id)
     await db.commit()
     
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
     from app.models.all_models import Shelf
-    query = select(Shelf).filter(Shelf.id == shelf.id).options(
+    query = select(Shelf).filter(
+        Shelf.id == shelf.id,
+        Shelf.store_id == current_user.store_id
+    ).options(
         selectinload(Shelf.boxes)
     )
     res = await db.execute(query)
@@ -61,35 +74,46 @@ async def create_shelf(
 async def create_box(
     box_in: BoxCreate,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
     """
     Establish a sub-box container inside a Shelf (e.g. Box 1 under Shelf A1).
     """
-    box = await rack_service.create_box(db, box_in)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    box = await rack_service.create_box(db, box_in, store_id=current_user.store_id, user_id=current_user.id)
     await db.commit()
     return box
 
 @router.get("/layout", response_model=List[RackResponse])
-async def get_store_layout(db: AsyncSession = Depends(get_db)):
+async def get_store_layout(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Render a complete physical blueprint layout representing all Racks, Shelves, Boxes, and mapped item counts.
     """
-    return await rack_repo.get_layout(db)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    return await rack_repo.get_layout(db, store_id=current_user.store_id)
 
 @router.post("/map-location", response_model=LocationMappingResponse)
 async def map_batch_location(
     mapping_in: LocationMappingCreate,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER", "CASHIER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER", "CASHIER"]))
 ):
     """
     Link a specific inventory Batch to a box storage location.
     """
-    mapping = await rack_service.map_batch_location(db, mapping_in)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    mapping = await rack_service.map_batch_location(db, mapping_in, store_id=current_user.store_id, user_id=current_user.id)
     await db.commit()
     
-    # Load relationships for response schema resolution
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
     from app.models.all_models import MedicineLocationMapping
@@ -105,18 +129,25 @@ async def update_rack(
     id: uuid.UUID,
     rack_in: RackCreate,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
-    rack = await rack_repo.get(db, id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    rack = await rack_repo.get(db, id, store_id=current_user.store_id)
     if not rack:
         raise NotFoundException("Rack not found")
+        
     rack = await rack_repo.update(db, db_obj=rack, obj_in=rack_in.model_dump())
     await db.commit()
     
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
     from app.models.all_models import Rack, Shelf
-    query = select(Rack).filter(Rack.id == rack.id).options(
+    query = select(Rack).filter(
+        Rack.id == rack.id,
+        Rack.store_id == current_user.store_id
+    ).options(
         selectinload(Rack.shelves).selectinload(Shelf.boxes)
     )
     res = await db.execute(query)
@@ -126,12 +157,16 @@ async def update_rack(
 async def delete_rack(
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
-    rack = await rack_repo.get(db, id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    rack = await rack_repo.get(db, id, store_id=current_user.store_id)
     if not rack:
         raise NotFoundException("Rack not found")
-    await rack_repo.remove(db, id=id)
+        
+    await rack_repo.remove(db, id=id, store_id=current_user.store_id)
     await db.commit()
     return {"success": True, "message": "Rack deleted successfully"}
 
@@ -140,18 +175,25 @@ async def update_shelf(
     id: uuid.UUID,
     shelf_in: ShelfCreate,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
-    shelf = await shelf_repo.get(db, id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    shelf = await shelf_repo.get(db, id, store_id=current_user.store_id)
     if not shelf:
         raise NotFoundException("Shelf not found")
+        
     shelf = await shelf_repo.update(db, db_obj=shelf, obj_in=shelf_in.model_dump())
     await db.commit()
     
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
     from app.models.all_models import Shelf
-    query = select(Shelf).filter(Shelf.id == shelf.id).options(selectinload(Shelf.boxes))
+    query = select(Shelf).filter(
+        Shelf.id == shelf.id,
+        Shelf.store_id == current_user.store_id
+    ).options(selectinload(Shelf.boxes))
     res = await db.execute(query)
     return res.scalars().first()
 
@@ -159,12 +201,16 @@ async def update_shelf(
 async def delete_shelf(
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
-    shelf = await shelf_repo.get(db, id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    shelf = await shelf_repo.get(db, id, store_id=current_user.store_id)
     if not shelf:
         raise NotFoundException("Shelf not found")
-    await shelf_repo.remove(db, id=id)
+        
+    await shelf_repo.remove(db, id=id, store_id=current_user.store_id)
     await db.commit()
     return {"success": True, "message": "Shelf deleted successfully"}
 
@@ -173,11 +219,15 @@ async def update_box(
     id: uuid.UUID,
     box_in: BoxCreate,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
-    box = await box_repo.get(db, id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    box = await box_repo.get(db, id, store_id=current_user.store_id)
     if not box:
         raise NotFoundException("Box not found")
+        
     box = await box_repo.update(db, db_obj=box, obj_in=box_in.model_dump())
     await db.commit()
     return box
@@ -186,12 +236,15 @@ async def update_box(
 async def delete_box(
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
-    box = await box_repo.get(db, id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    box = await box_repo.get(db, id, store_id=current_user.store_id)
     if not box:
         raise NotFoundException("Box not found")
-    await box_repo.remove(db, id=id)
+        
+    await box_repo.remove(db, id=id, store_id=current_user.store_id)
     await db.commit()
     return {"success": True, "message": "Box deleted successfully"}
-

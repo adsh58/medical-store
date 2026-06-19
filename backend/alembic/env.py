@@ -10,9 +10,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.config import settings
 from app.database import Base
-# Import all models to ensure registry before metadata extraction
 from app.models.all_models import (
-    Role, User, MedicineCategory, Medicine, Rack, Shelf,
+    Role, User, Store, Doctor, MasterCategory, MasterMedicine, Medicine, Rack, Shelf, Box,
     Agency, PurchaseInvoice, PurchaseInvoiceItem, Batch, Stock,
     MedicineLocationMapping, Sales, SaleItem, PriceHistory,
     PurchaseHistory, InventoryIntelligence, ExpiryTracking,

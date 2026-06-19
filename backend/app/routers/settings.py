@@ -9,28 +9,36 @@ from app.schemas.all_schemas import SystemSettingResponse, SystemSettingUpdate, 
 from app.services.all_services import setting_service
 from app.core.dependencies import RoleChecker, get_current_user
 from app.models.all_models import SystemLog, User
+from app.core.exceptions import BadRequestException
 
 router = APIRouter(prefix="/settings", tags=["System Settings"])
 
 @router.get("/", response_model=SystemSettingResponse)
 async def get_settings(
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Get active configuration settings.
+    Get active configuration settings for current store.
     """
-    return await setting_service.get_settings(db)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    return await setting_service.get_settings(db, store_id=current_user.store_id)
 
 @router.put("/", response_model=SystemSettingResponse)
 async def update_settings(
     settings_in: SystemSettingUpdate,
     db: AsyncSession = Depends(get_db),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
     """
-    Update configuration settings.
+    Update configuration settings for current store.
     """
-    settings_obj = await setting_service.update_settings(db, settings_in)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    settings_obj = await setting_service.update_settings(db, settings_in, store_id=current_user.store_id)
     await db.commit()
     return settings_obj
 
@@ -40,8 +48,7 @@ async def get_system_logs(
     end_date: Optional[date] = Query(None, description="End date filter (YYYY-MM-DD)"),
     log_level: Optional[str] = Query(None, description="Log level filter (ERROR, WARNING, INFO)"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["SUPER_ADMIN", "ADMIN", "MANAGER"]))
 ):
     """
     Query system error and warning logs with date range and log level filters.
@@ -50,6 +57,12 @@ async def get_system_logs(
     query = select(SystemLog)
     filters = []
     
+    # Restrict to store logs unless SUPER_ADMIN
+    if current_user.role.name != "SUPER_ADMIN":
+        if not current_user.store_id:
+            raise BadRequestException("User does not belong to a store")
+        filters.append(SystemLog.store_id == current_user.store_id)
+        
     if start_date:
         start_dt = datetime.combine(start_date, time.min)
         filters.append(SystemLog.created_at >= start_dt)

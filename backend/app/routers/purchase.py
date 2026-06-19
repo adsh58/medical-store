@@ -16,7 +16,7 @@ from app.services.all_services import purchase_service, medicine_service
 from app.services.ai_service import ai_service
 from app.repositories.all_repos import invoice_repo, ai_log_repo, medicine_repo
 from app.core.dependencies import RoleChecker, get_current_user
-from app.models.all_models import User, Agency, MedicineCategory
+from app.models.all_models import User, Agency, MasterCategory
 from app.core.exceptions import NotFoundException, BadRequestException
 
 router = APIRouter(prefix="/purchases", tags=["Purchase Management"])
@@ -26,13 +26,15 @@ logger = logging.getLogger("app.routers.purchase")
 async def log_purchase(
     invoice_in: PurchaseInvoiceCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
     """
     Log a purchase invoice, updates stock batches, and evaluates pricing changes.
     """
-    invoice = await purchase_service.process_purchase_invoice(db, invoice_in, user_id=current_user.id)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    invoice = await purchase_service.process_purchase_invoice(db, invoice_in, store_id=current_user.store_id, user_id=current_user.id)
     await db.commit()
     return invoice
 
@@ -40,24 +42,30 @@ async def log_purchase(
 async def list_invoices(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    List historical purchase invoices.
+    List historical purchase invoices in this store.
     """
-    return await invoice_repo.get_multi(db, skip=skip, limit=limit)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    return await invoice_repo.get_multi(db, skip=skip, limit=limit, store_id=current_user.store_id)
 
 @router.post("/invoices/upload-ai")
 async def upload_invoice_ai(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+    current_user: User = Depends(RoleChecker(["ADMIN", "MANAGER"]))
 ):
     """
     AI Invoice Scanning utilizing Gemini API Structured Output configuration.
     Extracts items, batch details, expiry dates, saves to PostgreSQL, and cleans up temp files.
     """
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
     # 1. Define and create temp uploads folder
     temp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "temp_uploads")
     os.makedirs(temp_dir, exist_ok=True)
@@ -87,45 +95,51 @@ async def upload_invoice_ai(
             temp_bytes = f.read()
             
         report = await ai_service.analyze_invoice(
-            db, temp_bytes, file.filename, file.content_type
+            db, temp_bytes, file.filename, file.content_type, store_id=current_user.store_id
         )
         logger.info(f"Gemini Processed: {file.filename}")
         logger.info(f"Data Extracted: {len(report.extracted_items)} items from {file.filename}")
         
         # 5. Automatically save the extracted invoice data to PostgreSQL
-        # A. Find or create Agency
-        query_agency = select(Agency).filter(Agency.name == report.supplier_name)
+        # A. Find or create Agency in this store
+        query_agency = select(Agency).filter(Agency.name == report.supplier_name, Agency.store_id == current_user.store_id)
         res_agency = await db.execute(query_agency)
         agency = res_agency.scalars().first()
         if not agency:
-            agency = Agency(name=report.supplier_name, contact_name="AI Auto-Created")
+            agency = Agency(
+                name=report.supplier_name, 
+                contact_name="AI Auto-Created",
+                store_id=current_user.store_id,
+                created_by_user_id=current_user.id,
+                updated_by_user_id=current_user.id
+            )
             db.add(agency)
             await db.flush()
             
-        # B. Find or create Medicine Category
-        query_cat = select(MedicineCategory).filter(MedicineCategory.name == "Uncategorized")
+        # B. Find or create Master Category (uncategorized is global)
+        query_cat = select(MasterCategory).filter(MasterCategory.name == "Uncategorized")
         res_cat = await db.execute(query_cat)
         category = res_cat.scalars().first()
         if not category:
-            category = MedicineCategory(name="Uncategorized", description="AI Auto-Created")
+            category = MasterCategory(name="Uncategorized", description="AI Auto-Created")
             db.add(category)
             await db.flush()
             
         # C. Find or create Medicines & construct invoice items
         items_to_create = []
         for item in report.extracted_items:
-            medicine = await medicine_repo.get_by_name(db, item.medicine_name)
+            medicine = await medicine_repo.get_by_name(db, item.medicine_name, store_id=current_user.store_id)
             if not medicine:
                 # Resolve and clean pack size with regex fallback
                 extracted_pack = getattr(item, "pack_size", None)
                 if not extracted_pack or str(extracted_pack).lower() in ["ai extracted pack", "unknown", "", "null", "none"]:
                     import re
                     patterns = [
-                        r'\b\d+\s*[xX]\s*\d+\s*[a-zA-Z]+\b',  # e.g., 16X500ML, 25X1PCS
-                        r'\b\d+\s*[xX]\s*\d+\b',               # e.g., 10X10, 3X10
-                        r'\b\d+\s*(?:CAPS?|TABS?|PCS|ML|GM?S?|VIALS?|AMPS?|TABLETS?|CAPSULES?)\b', # e.g., 30CAP, 100ML, 15GM, 15G
-                        r'\b\d+\s*\'[sS]\b',                   # e.g., 10's, 15's
-                        r'\b\d+\s*[sS]\b'                      # e.g., 10s, 15s
+                        r'\b\d+\s*[xX]\s*\d+\s*[a-zA-Z]+\b',
+                        r'\b\d+\s*[xX]\s*\d+\b',
+                        r'\b\d+\s*(?:CAPS?|TABS?|PCS|ML|GM?S?|VIALS?|AMPS?|TABLETS?|CAPSULES?)\b',
+                        r'\b\d+\s*\'[sS]\b',
+                        r'\b\d+\s*[sS]\b'
                     ]
                     for pattern in patterns:
                         match = re.search(pattern, item.medicine_name, re.IGNORECASE)
@@ -135,17 +149,14 @@ async def upload_invoice_ai(
                     else:
                         extracted_pack = "AI Extracted Pack"
                 
-                # Resolve and clean company name
                 extracted_company = getattr(item, "company", None)
                 if not extracted_company or str(extracted_company).lower() in ["ai extracted company", "unknown", "", "null", "none"]:
                     extracted_company = "AI Extracted Company"
                     
-                # Resolve and clean generic name
                 extracted_generic = getattr(item, "generic_name", None)
                 if not extracted_generic or str(extracted_generic).lower() in ["ai extracted generic", "unknown", "", "null", "none"]:
                     extracted_generic = "AI Extracted Generic"
 
-                # Create default medicine
                 med_in = MedicineCreate(
                     category_id=category.id,
                     name=item.medicine_name,
@@ -157,9 +168,8 @@ async def upload_invoice_ai(
                     doctor_selling_rate=item.new_rate * 1.15,
                     customer_selling_rate=item.new_rate * 1.30
                 )
-                medicine = await medicine_service.create_medicine(db, med_in)
+                medicine = await medicine_service.create_medicine(db, med_in, store_id=current_user.store_id, user_id=current_user.id)
                 await db.flush()
-                # Update item report medicine_id
                 item.medicine_id = medicine.id
                 
             items_to_create.append(
@@ -181,8 +191,7 @@ async def upload_invoice_ai(
             items=items_to_create
         )
         
-        # Save invoice to DB (automatically commits and updates stocks/prices/histories)
-        invoice = await purchase_service.process_purchase_invoice(db, invoice_in, user_id=current_user.id)
+        invoice = await purchase_service.process_purchase_invoice(db, invoice_in, store_id=current_user.store_id, user_id=current_user.id)
         
         # Update log
         log_obj.invoice_id = invoice.id
@@ -203,10 +212,8 @@ async def upload_invoice_ai(
         }
         
     except Exception as e:
-        # Rollback db session changes
         await db.rollback()
         
-        # Update log status to FAILED
         try:
             log_obj.status = "FAILED"
             log_obj.error_message = str(e)
@@ -219,7 +226,6 @@ async def upload_invoice_ai(
         raise BadRequestException(f"AI Invoice processing failed: {str(e)}")
         
     finally:
-        # 6. Delete temp file immediately
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
             logger.info(f"File Deleted: {temp_file_path}")

@@ -2,23 +2,35 @@ from fastapi import APIRouter, Depends, status, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import uuid
+
 from app.database import get_db
 from app.schemas.all_schemas import UserCreate, UserLogin, Token, UserResponse, UserUpdate
 from app.services.all_services import auth_service
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, RoleChecker
 from app.models.all_models import User, Role
-from app.core.cache import query_cache
+from app.repositories.all_repos import user_repo, doctor_repo
+from app.core.exceptions import NotFoundException, BadRequestException
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register(
+    user_in: UserCreate, 
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(RoleChecker(["ADMIN", "SUPER_ADMIN"]))
+):
     """
-    Register a new user inside the system. Enforces role configuration.
+    Register a new user inside the system. Enforces role and store configuration.
     """
-    user = await auth_service.register_user(db, user_in)
+    # ADMIN users can only register users for their own store
+    store_id = current_user.store_id
+    if current_user.role.name == "SUPER_ADMIN":
+        # Super admin has no store_id, unless they register a store user via store router
+        store_id = None
+        
+    user = await auth_service.register_user(db, user_in, store_id=store_id)
     await db.commit()
-    return user
+    return await user_repo.get(db, user.id)
 
 @router.post("/login", response_model=Token)
 async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)):
@@ -49,7 +61,6 @@ async def refresh_token(
         token = refresh_token_in
         
     from app.core.security import verify_refresh_token, create_access_token, create_refresh_token
-    from app.repositories.all_repos import user_repo
     from app.core.exceptions import UnauthorizedException
     
     payload = verify_refresh_token(token)
@@ -58,7 +69,6 @@ async def refresh_token(
         raise UnauthorizedException("Invalid refresh token")
         
     try:
-        import uuid
         user_id = uuid.UUID(user_id_str)
     except ValueError:
         raise UnauthorizedException("Invalid refresh token format")
@@ -72,100 +82,119 @@ async def refresh_token(
     
     return Token(access_token=new_access, refresh_token=new_refresh)
 
-@router.get("/doctors", response_model=List[UserResponse])
-async def list_doctors(
+
+# ==========================================
+# BACKWARD COMPATIBILITY DOCTOR ENDPOINTS
+# ==========================================
+@router.get("/doctors")
+async def list_doctors_legacy(
     search: Optional[str] = Query(None, description="Search doctors by name or email"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    List all active doctors in the store registry.
+    Legacy endpoint redirecting to the Doctor business entity registry.
     """
-    cache_key = f"doctors:list:{search or 'all'}"
-    cached = query_cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    from sqlalchemy.future import select
-    from sqlalchemy import or_
-    from sqlalchemy.orm import selectinload
-    query = select(User).join(Role).filter(Role.name == "DOCTOR", User.deleted_at == None)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
     if search:
-        query = query.filter(
-            or_(
-                User.full_name.ilike(f"%{search}%"),
-                User.email.ilike(f"%{search}%")
-            )
-        )
-    query = query.options(selectinload(User.role))
-    res = await db.execute(query)
-    docs = list(res.scalars().all())
-    
-    res_data = [UserResponse.model_validate(d) for d in docs]
-    query_cache.set(cache_key, res_data)
+        docs = await doctor_repo.search(db, search, store_id=current_user.store_id)
+    else:
+        docs = await doctor_repo.get_multi(db, store_id=current_user.store_id)
+        
+    res_data = []
+    for d in docs:
+        res_data.append({
+            "id": str(d.id),
+            "email": d.clinic_name or "noemail@mail.com",
+            "full_name": d.name,
+            "is_active": d.active,
+            "role": {"id": str(uuid.uuid4()), "name": "DOCTOR", "description": "Doctor"},
+            "created_at": d.created_at.isoformat()
+        })
     return res_data
 
-@router.post("/doctors", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_doctor(
+@router.post("/doctors", status_code=status.HTTP_201_CREATED)
+async def create_doctor_legacy(
     doctor_in: UserCreate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Create a new doctor.
+    Legacy endpoint mapping to new Doctor business entity creation.
     """
-    doctor_in.role_name = "DOCTOR"
-    user = await auth_service.register_user(db, doctor_in)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    doc = await doctor_repo.create(db, obj_in={
+        "store_id": current_user.store_id,
+        "name": doctor_in.full_name,
+        "mobile": "0000000000",
+        "clinic_name": doctor_in.email,
+        "address": "Created from legacy endpoint",
+        "active": True,
+        "created_by_user_id": current_user.id,
+        "updated_by_user_id": current_user.id
+    })
     await db.commit()
-    query_cache.delete("doctors:list")
-    return user
+    return {
+        "id": str(doc.id),
+        "email": doc.clinic_name,
+        "full_name": doc.name,
+        "is_active": doc.active,
+        "role": {"id": str(uuid.uuid4()), "name": "DOCTOR", "description": "Doctor"},
+        "created_at": doc.created_at.isoformat()
+    }
 
-@router.put("/doctors/{id}", response_model=UserResponse)
-async def update_doctor(
+@router.put("/doctors/{id}")
+async def update_doctor_legacy(
     id: uuid.UUID,
     doctor_in: UserUpdate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Update doctor details.
+    Legacy endpoint mapping to Doctor business entity updates.
     """
-    from app.repositories.all_repos import user_repo
-    from app.core.exceptions import NotFoundException
-    user = await user_repo.get(db, id)
-    if not user:
-        raise NotFoundException("Doctor not found")
-    
-    update_data = {
-        "full_name": doctor_in.full_name,
-        "email": doctor_in.email,
-    }
-    if doctor_in.password:
-        from app.core.security import hash_password
-        update_data["password_hash"] = hash_password(doctor_in.password)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
         
-    updated_user = await user_repo.update(db, db_obj=user, obj_in=update_data)
-    await db.commit()
-    query_cache.delete("doctors:list")
+    doc = await doctor_repo.get(db, id, store_id=current_user.store_id)
+    if not doc:
+        raise NotFoundException("Doctor not found")
+        
+    doc.name = doctor_in.full_name
+    doc.clinic_name = doctor_in.email
+    doc.updated_by_user_id = current_user.id
     
-    from sqlalchemy.orm import selectinload
-    from sqlalchemy.future import select
-    query = select(User).filter(User.id == updated_user.id).options(selectinload(User.role))
-    res = await db.execute(query)
-    return res.scalars().first()
+    db.add(doc)
+    await db.commit()
+    return {
+        "id": str(doc.id),
+        "email": doc.clinic_name,
+        "full_name": doc.name,
+        "is_active": doc.active,
+        "role": {"id": str(uuid.uuid4()), "name": "DOCTOR", "description": "Doctor"},
+        "created_at": doc.created_at.isoformat()
+    }
 
 @router.delete("/doctors/{id}")
-async def delete_doctor(
+async def delete_doctor_legacy(
     id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Delete doctor record.
+    Legacy endpoint mapping to Doctor soft deletion.
     """
-    from app.repositories.all_repos import user_repo
-    from app.core.exceptions import NotFoundException
-    user = await user_repo.get(db, id)
-    if not user:
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    doc = await doctor_repo.get(db, id, store_id=current_user.store_id)
+    if not doc:
         raise NotFoundException("Doctor not found")
-    await user_repo.remove(db, id=id)
+        
+    await doctor_repo.remove(db, id=id, store_id=current_user.store_id)
     await db.commit()
-    query_cache.delete("doctors:list")
     return {"success": True, "message": "Doctor deleted successfully"}
-

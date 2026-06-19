@@ -9,7 +9,7 @@ from app.services.all_services import sales_service
 from app.repositories.all_repos import sales_repo
 from app.core.dependencies import RoleChecker, get_current_user
 from app.models.all_models import User
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import NotFoundException, BadRequestException
 
 router = APIRouter(prefix="/sales", tags=["Sales Management"])
 
@@ -23,14 +23,20 @@ async def create_sale(
     """
     Record a new customer sale registry. Decrements stock levels across all included batches.
     """
-    sale = await sales_service.create_sale(db, current_user.id, sale_in)
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
+    sale = await sales_service.create_sale(db, current_user.id, sale_in, store_id=current_user.store_id)
     await db.commit()
     
     # Reload with items relation
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
     from app.models.all_models import Sales, SaleItem, Batch, MedicineLocationMapping, Box, Shelf, Rack
-    query = select(Sales).filter(Sales.id == sale.id).options(
+    query = select(Sales).filter(
+        Sales.id == sale.id,
+        Sales.store_id == current_user.store_id
+    ).options(
         selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.medicine),
         selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
     )
@@ -41,15 +47,21 @@ async def create_sale(
 async def list_sales(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Retrieve paginated lists of recorded sales transactions.
+    Retrieve paginated lists of recorded sales transactions in this store.
     """
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
     from app.models.all_models import Sales, SaleItem, Batch, MedicineLocationMapping, Box, Shelf, Rack
-    query = select(Sales).offset(skip).limit(limit).options(
+    query = select(Sales).filter(
+        Sales.store_id == current_user.store_id
+    ).offset(skip).limit(limit).options(
         selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.medicine),
         selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
     )
@@ -57,14 +69,24 @@ async def list_sales(
     return list(res.scalars().all())
 
 @router.get("/{id}", response_model=SaleResponse)
-async def get_sale(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_sale(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
-    Fetch a detailed sales transaction record by UUID.
+    Fetch a detailed sales transaction record by UUID in this store.
     """
+    if not current_user.store_id:
+        raise BadRequestException("User does not belong to a store")
+        
     from sqlalchemy.orm import selectinload
     from sqlalchemy.future import select
     from app.models.all_models import Sales, SaleItem, Batch, MedicineLocationMapping, Box, Shelf, Rack
-    query = select(Sales).filter(Sales.id == id).options(
+    query = select(Sales).filter(
+        Sales.id == id,
+        Sales.store_id == current_user.store_id
+    ).options(
         selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.medicine),
         selectinload(Sales.items).selectinload(SaleItem.batch).selectinload(Batch.location_mapping).selectinload(MedicineLocationMapping.box).selectinload(Box.shelf).selectinload(Shelf.rack)
     )

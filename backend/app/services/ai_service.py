@@ -78,7 +78,7 @@ class AIService:
             logger.warning("Gemini API Key is not configured. Running in MOCK mode.")
 
     async def analyze_invoice(
-        self, db: AsyncSession, file_bytes: bytes, file_name: str, mime_type: str
+        self, db: AsyncSession, file_bytes: bytes, file_name: str, mime_type: str, store_id: uuid.UUID
     ) -> InvoiceAnalysisReport:
         """
         Process the uploaded invoice document (PDF/JPG/PNG) via Gemini API.
@@ -143,11 +143,11 @@ class AIService:
             extracted_invoice = self._get_mock_extraction(file_name)
 
         # Run price trend analysis & comparison
-        report = await self._generate_comparison_report(db, extracted_invoice, file_name)
+        report = await self._generate_comparison_report(db, extracted_invoice, file_name, store_id)
         return report
 
     async def _generate_comparison_report(
-        self, db: AsyncSession, extracted: ExtractedInvoice, file_name: str
+        self, db: AsyncSession, extracted: ExtractedInvoice, file_name: str, store_id: uuid.UUID
     ) -> InvoiceAnalysisReport:
         analysis_items = []
         total_increases = 0
@@ -155,7 +155,7 @@ class AIService:
 
         for item in extracted.items:
             # Try to fetch existing medicine matching by name
-            medicine = await medicine_repo.get_by_name(db, item.medicine_name)
+            medicine = await medicine_repo.get_by_name(db, item.medicine_name, store_id=store_id)
             
             old_rate = 0.0
             trend = "NEW_MEDICINE"
@@ -282,11 +282,11 @@ class AIService:
             ]
         )
 
-    async def search_assistant(self, db: AsyncSession, query: str) -> List[Dict[str, Any]]:
+    async def search_assistant(self, db: AsyncSession, query: str, store_id: uuid.UUID) -> List[Dict[str, Any]]:
         """
         AI Medicine search assistant utilizing Gemini model configuration to match brand names by symptoms or generics.
         """
-        all_meds = await medicine_repo.get_multi(db, limit=200)
+        all_meds = await medicine_repo.get_multi(db, limit=200, store_id=store_id)
         if not all_meds:
             return []
 

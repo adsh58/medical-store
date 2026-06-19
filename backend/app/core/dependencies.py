@@ -40,6 +40,8 @@ class RoleChecker:
         self.allowed_roles = [r.upper() for r in allowed_roles]
 
     def __call__(self, current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role.name.upper() == "SUPER_ADMIN":
+            return current_user
         if current_user.role.name.upper() not in self.allowed_roles:
             raise ForbiddenException("You do not have permission to access this resource")
         return current_user

@@ -4,6 +4,32 @@ from typing import List, Optional
 import uuid
 
 # ==========================================
+# 0. STORE SCHEMAS (NEW)
+# ==========================================
+class StoreCreate(BaseModel):
+    name: str
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+class StoreResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    active: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class StoreAdminCreate(BaseModel):
+    store_id: uuid.UUID
+    email: EmailStr
+    password: str
+    full_name: str
+
+
+# ==========================================
 # 1. AUTHENTICATION & USER SCHEMAS
 # ==========================================
 class RoleResponse(BaseModel):
@@ -20,10 +46,11 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    role_name: str  # ADMIN, MANAGER, CASHIER, DOCTOR
+    role_name: str  # SUPER_ADMIN, ADMIN, MANAGER, CASHIER
 
 class UserResponse(BaseModel):
     id: uuid.UUID
+    store_id: Optional[uuid.UUID] = None
     email: EmailStr
     full_name: str
     is_active: bool
@@ -40,6 +67,67 @@ class TokenPayload(BaseModel):
     sub: str  # User ID
     role: str
     exp: int
+
+
+# ==========================================
+# 1.3 DOCTOR SCHEMAS (BUSINESS ENTITY)
+# ==========================================
+class DoctorCreate(BaseModel):
+    name: str
+    mobile: str
+    clinic_name: Optional[str] = None
+    address: Optional[str] = None
+
+class DoctorUpdate(BaseModel):
+    name: Optional[str] = None
+    mobile: Optional[str] = None
+    clinic_name: Optional[str] = None
+    address: Optional[str] = None
+    active: Optional[bool] = None
+
+class DoctorResponse(BaseModel):
+    id: uuid.UUID
+    store_id: uuid.UUID
+    name: str
+    mobile: str
+    clinic_name: Optional[str] = None
+    address: Optional[str] = None
+    active: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==========================================
+# 1.4 MASTER CATALOG SCHEMAS (NEW)
+# ==========================================
+class MasterCategoryCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class MasterCategoryResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class MasterMedicineCreate(BaseModel):
+    category_id: uuid.UUID
+    name: str
+    generic_name: str
+    company: str
+    pack_size: str
+
+class MasterMedicineResponse(BaseModel):
+    id: uuid.UUID
+    category_id: uuid.UUID
+    name: str
+    generic_name: str
+    company: str
+    pack_size: str
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
 
 # ==========================================
 # 2. MEDICINES & CATEGORIES
@@ -99,9 +187,13 @@ class MedicineResponse(BaseModel):
     current_purchase_rate: float
     doctor_selling_rate: float
     customer_selling_rate: float
+    purchase_rate: float
+    doctor_rate: float
+    customer_rate: float
     created_at: datetime
     batches: List[BatchStockResponse] = []
     model_config = ConfigDict(from_attributes=True)
+
 
 # ==========================================
 # 3. RACKS & SHELVES
@@ -142,6 +234,7 @@ class RackResponse(BaseModel):
     shelves: List[ShelfResponse] = []
     model_config = ConfigDict(from_attributes=True)
 
+
 # ==========================================
 # 4. AGENCIES
 # ==========================================
@@ -160,6 +253,7 @@ class AgencyResponse(BaseModel):
     email: Optional[str] = None
     address: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
+
 
 # ==========================================
 # 5. BATCHES, STOCK & LOCATION
@@ -205,6 +299,7 @@ class LocationMappingResponse(BaseModel):
     box: BoxResponse
     model_config = ConfigDict(from_attributes=True)
 
+
 # ==========================================
 # 6. PURCHASES & INVOICES
 # ==========================================
@@ -241,6 +336,7 @@ class PurchaseInvoiceResponse(BaseModel):
     items: List[PurchaseInvoiceItemResponse] = []
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
 
 # ==========================================
 # 7. SALES REGISTERS
@@ -280,6 +376,7 @@ class SaleResponse(BaseModel):
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+
 # ==========================================
 # 8. HISTORICAL RECORDS
 # ==========================================
@@ -305,6 +402,7 @@ class PurchaseHistoryResponse(BaseModel):
     purchased_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+
 # ==========================================
 # 9. ALERTS & INTELLIGENCE
 # ==========================================
@@ -326,6 +424,7 @@ class IntelligenceResponse(BaseModel):
     inventory_status: str
     last_calculated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
 
 # ==========================================
 # 10. AI SCAN LOGGING
@@ -415,19 +514,16 @@ class MedicineUpdate(BaseModel):
     doctor_selling_rate: Optional[float] = Field(None, gt=0)
     customer_selling_rate: Optional[float] = Field(None, gt=0)
 
-
 class UserUpdate(BaseModel):
     email: EmailStr
     full_name: str
     password: Optional[str] = None
-
 
 class CustomerCreate(BaseModel):
     name: str
     phone: str
     email: Optional[EmailStr] = None
     address: Optional[str] = None
-
 
 class CustomerResponse(BaseModel):
     id: uuid.UUID
@@ -438,7 +534,6 @@ class CustomerResponse(BaseModel):
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
-
 class SystemSettingResponse(BaseModel):
     id: uuid.UUID
     store_name: str
@@ -447,13 +542,11 @@ class SystemSettingResponse(BaseModel):
     doctor_margin: float
     model_config = ConfigDict(from_attributes=True)
 
-
 class SystemSettingUpdate(BaseModel):
     store_name: Optional[str] = None
     currency: Optional[str] = None
     customer_margin: Optional[float] = None
     doctor_margin: Optional[float] = None
-
 
 class SystemLogResponse(BaseModel):
     id: uuid.UUID
@@ -466,6 +559,3 @@ class SystemLogResponse(BaseModel):
     user_id: Optional[uuid.UUID] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
-
-
-

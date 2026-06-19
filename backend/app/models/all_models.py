@@ -8,6 +8,33 @@ import uuid
 from app.database import Base
 
 # ==========================================
+# 0. STORES (MULTI-TENANCY)
+# ==========================================
+class Store(Base):
+    __tablename__ = "stores"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    users: Mapped[List["User"]] = relationship("User", back_populates="store", cascade="all, delete-orphan")
+    medicines: Mapped[List["Medicine"]] = relationship("Medicine", back_populates="store", cascade="all, delete-orphan")
+    customers: Mapped[List["Customer"]] = relationship("Customer", back_populates="store", cascade="all, delete-orphan")
+    sales: Mapped[List["Sales"]] = relationship("Sales", back_populates="store", cascade="all, delete-orphan")
+    batches: Mapped[List["Batch"]] = relationship("Batch", back_populates="store", cascade="all, delete-orphan")
+    purchase_invoices: Mapped[List["PurchaseInvoice"]] = relationship("PurchaseInvoice", back_populates="store", cascade="all, delete-orphan")
+    racks: Mapped[List["Rack"]] = relationship("Rack", back_populates="store", cascade="all, delete-orphan")
+    doctors: Mapped[List["Doctor"]] = relationship("Doctor", back_populates="store", cascade="all, delete-orphan")
+    agencies: Mapped[List["Agency"]] = relationship("Agency", back_populates="store", cascade="all, delete-orphan")
+    system_settings: Mapped[List["SystemSetting"]] = relationship("SystemSetting", back_populates="store", cascade="all, delete-orphan")
+
+
+# ==========================================
 # 1. ROLES & USERS MODULE
 # ==========================================
 class Role(Base):
@@ -28,6 +55,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
     role_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -39,15 +67,37 @@ class User(Base):
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     role: Mapped["Role"] = relationship("Role", back_populates="users")
+    store: Mapped[Optional["Store"]] = relationship("Store", back_populates="users")
     sales_created: Mapped[List["Sales"]] = relationship("Sales", foreign_keys="[Sales.cashier_id]", back_populates="cashier")
-    sales_referred: Mapped[List["Sales"]] = relationship("Sales", foreign_keys="[Sales.doctor_id]", back_populates="doctor")
 
 
 # ==========================================
-# 2. MEDICINES & CATEGORIES MODULE
+# 1.5 DOCTORS (BUSINESS ENTITY)
 # ==========================================
-class MedicineCategory(Base):
-    __tablename__ = "medicine_categories"
+class Doctor(Base):
+    __tablename__ = "doctors"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    mobile: Mapped[str] = mapped_column(String(20), nullable=False)
+    clinic_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    store: Mapped["Store"] = relationship("Store", back_populates="doctors")
+    sales_referred: Mapped[List["Sales"]] = relationship("Sales", back_populates="doctor")
+
+
+# ==========================================
+# 2. MASTER MEDICINES & CATEGORIES
+# ==========================================
+class MasterCategory(Base):
+    __tablename__ = "master_categories"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
@@ -57,33 +107,89 @@ class MedicineCategory(Base):
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    medicines: Mapped[List["Medicine"]] = relationship("Medicine", back_populates="category")
+    master_medicines: Mapped[List["MasterMedicine"]] = relationship("MasterMedicine", back_populates="category", cascade="all, delete-orphan")
+
+
+class MasterMedicine(Base):
+    __tablename__ = "master_medicines"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    category_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("master_categories.id", ondelete="RESTRICT"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    generic_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    company: Mapped[str] = mapped_column(String(255), nullable=False)
+    manufacturer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    pack_size: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    category: Mapped["MasterCategory"] = relationship("MasterCategory", back_populates="master_medicines", lazy="joined")
+    store_medicines: Mapped[List["Medicine"]] = relationship("Medicine", back_populates="master_medicine", cascade="all, delete-orphan")
 
 
 class Medicine(Base):
     __tablename__ = "medicines"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    category_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("medicine_categories.id", ondelete="RESTRICT"), nullable=False)
-    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    generic_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    company: Mapped[str] = mapped_column(String(255), nullable=False)
-    pack_size: Mapped[str] = mapped_column(String(100), nullable=False)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    master_medicine_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("master_medicines.id", ondelete="RESTRICT"), nullable=False)
     mrp: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    current_purchase_rate: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    doctor_selling_rate: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    customer_selling_rate: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    purchase_rate: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    doctor_rate: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    customer_rate: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-    category: Mapped["MedicineCategory"] = relationship("MedicineCategory", back_populates="medicines")
-    batches: Mapped[List["Batch"]] = relationship("Batch", back_populates="medicine")
-    invoice_items: Mapped[List["PurchaseInvoiceItem"]] = relationship("PurchaseInvoiceItem", back_populates="medicine")
-    price_history: Mapped[List["PriceHistory"]] = relationship("PriceHistory", back_populates="medicine")
-    purchase_history: Mapped[List["PurchaseHistory"]] = relationship("PurchaseHistory", back_populates="medicine")
-    intelligence: Mapped[Optional["InventoryIntelligence"]] = relationship("InventoryIntelligence", back_populates="medicine", uselist=False)
+    store: Mapped["Store"] = relationship("Store", back_populates="medicines")
+    master_medicine: Mapped["MasterMedicine"] = relationship("MasterMedicine", back_populates="store_medicines", lazy="joined")
+    batches: Mapped[List["Batch"]] = relationship("Batch", back_populates="medicine", cascade="all, delete-orphan")
+    invoice_items: Mapped[List["PurchaseInvoiceItem"]] = relationship("PurchaseInvoiceItem", back_populates="medicine", cascade="all, delete-orphan")
+    price_history: Mapped[List["PriceHistory"]] = relationship("PriceHistory", back_populates="medicine", cascade="all, delete-orphan")
+    purchase_history: Mapped[List["PurchaseHistory"]] = relationship("PurchaseHistory", back_populates="medicine", cascade="all, delete-orphan")
+    intelligence: Mapped[Optional["InventoryIntelligence"]] = relationship("InventoryIntelligence", back_populates="medicine", uselist=False, cascade="all, delete-orphan")
+
+    # Backward compatibility properties to prevent breaking frontend/other backend code
+    @property
+    def name(self) -> str:
+        return self.master_medicine.name if self.master_medicine else ""
+
+    @property
+    def generic_name(self) -> str:
+        return self.master_medicine.generic_name if self.master_medicine else ""
+
+    @property
+    def company(self) -> str:
+        return self.master_medicine.company if self.master_medicine else ""
+
+    @property
+    def pack_size(self) -> str:
+        return self.master_medicine.pack_size if self.master_medicine else ""
+
+    @property
+    def category_id(self) -> Optional[uuid.UUID]:
+        return self.master_medicine.category_id if self.master_medicine else None
+
+    @property
+    def category(self) -> Optional[MasterCategory]:
+        return self.master_medicine.category if self.master_medicine else None
+
+    @property
+    def current_purchase_rate(self) -> float:
+        return float(self.purchase_rate)
+
+    @property
+    def doctor_selling_rate(self) -> float:
+        return float(self.doctor_rate)
+
+    @property
+    def customer_selling_rate(self) -> float:
+        return float(self.customer_rate)
 
 
 # ==========================================
@@ -93,20 +199,25 @@ class Rack(Base):
     __tablename__ = "racks"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-    shelves: Mapped[List["Shelf"]] = relationship("Shelf", back_populates="rack")
+    store: Mapped["Store"] = relationship("Store", back_populates="racks")
+    shelves: Mapped[List["Shelf"]] = relationship("Shelf", back_populates="rack", cascade="all, delete-orphan")
 
 
 class Shelf(Base):
     __tablename__ = "shelves"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     rack_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("racks.id", ondelete="RESTRICT"), nullable=False)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -114,15 +225,19 @@ class Shelf(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     rack: Mapped["Rack"] = relationship("Rack", back_populates="shelves")
-    boxes: Mapped[List["Box"]] = relationship("Box", back_populates="shelf")
+    boxes: Mapped[List["Box"]] = relationship("Box", back_populates="shelf", cascade="all, delete-orphan")
+    store_relation: Mapped["Store"] = relationship("Store")
 
 
 class Box(Base):
     __tablename__ = "boxes"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     shelf_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shelves.id", ondelete="RESTRICT"), nullable=False)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -130,9 +245,12 @@ class Box(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     shelf: Mapped["Shelf"] = relationship("Shelf", back_populates="boxes")
-    location_mappings: Mapped[List["MedicineLocationMapping"]] = relationship("MedicineLocationMapping", back_populates="box")
+    location_mappings: Mapped[List["MedicineLocationMapping"]] = relationship("MedicineLocationMapping", back_populates="box", cascade="all, delete-orphan")
+    store_relation: Mapped["Store"] = relationship("Store")
 
 
 # ==========================================
@@ -142,7 +260,8 @@ class Agency(Base):
     __tablename__ = "agencies"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     contact_name: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -151,15 +270,19 @@ class Agency(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-    invoices: Mapped[List["PurchaseInvoice"]] = relationship("PurchaseInvoice", back_populates="agency")
-    purchase_history: Mapped[List["PurchaseHistory"]] = relationship("PurchaseHistory", back_populates="agency")
+    store: Mapped["Store"] = relationship("Store", back_populates="agencies")
+    invoices: Mapped[List["PurchaseInvoice"]] = relationship("PurchaseInvoice", back_populates="agency", cascade="all, delete-orphan")
+    purchase_history: Mapped[List["PurchaseHistory"]] = relationship("PurchaseHistory", back_populates="agency", cascade="all, delete-orphan")
 
 
 class PurchaseInvoice(Base):
     __tablename__ = "purchase_invoices"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     agency_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agencies.id", ondelete="RESTRICT"), nullable=False)
     invoice_number: Mapped[str] = mapped_column(String(100), nullable=False)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -169,11 +292,14 @@ class PurchaseInvoice(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
+    store: Mapped["Store"] = relationship("Store", back_populates="purchase_invoices")
     agency: Mapped["Agency"] = relationship("Agency", back_populates="invoices")
     items: Mapped[List["PurchaseInvoiceItem"]] = relationship("PurchaseInvoiceItem", back_populates="invoice", cascade="all, delete-orphan")
-    ai_logs: Mapped[List["AIInvoiceProcessingLog"]] = relationship("AIInvoiceProcessingLog", back_populates="invoice")
-    purchase_history: Mapped[List["PurchaseHistory"]] = relationship("PurchaseHistory", back_populates="invoice")
+    ai_logs: Mapped[List["AIInvoiceProcessingLog"]] = relationship("AIInvoiceProcessingLog", back_populates="invoice", cascade="all, delete-orphan")
+    purchase_history: Mapped[List["PurchaseHistory"]] = relationship("PurchaseHistory", back_populates="invoice", cascade="all, delete-orphan")
 
 
 class PurchaseInvoiceItem(Base):
@@ -202,6 +328,7 @@ class Batch(Base):
     __tablename__ = "batches"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     medicine_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("medicines.id", ondelete="RESTRICT"), nullable=False)
     batch_number: Mapped[str] = mapped_column(String(100), nullable=False)
     expiry_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -211,12 +338,15 @@ class Batch(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
+    store: Mapped["Store"] = relationship("Store", back_populates="batches")
     medicine: Mapped["Medicine"] = relationship("Medicine", back_populates="batches")
     stock: Mapped["Stock"] = relationship("Stock", back_populates="batch", uselist=False, cascade="all, delete-orphan")
     location_mapping: Mapped[Optional["MedicineLocationMapping"]] = relationship("MedicineLocationMapping", back_populates="batch", uselist=False, cascade="all, delete-orphan")
-    sale_items: Mapped[List["SaleItem"]] = relationship("SaleItem", back_populates="batch")
-    expiry_alerts: Mapped[List["ExpiryTracking"]] = relationship("ExpiryTracking", back_populates="batch")
+    sale_items: Mapped[List["SaleItem"]] = relationship("SaleItem", back_populates="batch", cascade="all, delete-orphan")
+    expiry_alerts: Mapped[List["ExpiryTracking"]] = relationship("ExpiryTracking", back_populates="batch", cascade="all, delete-orphan")
 
     @property
     def current_stock(self) -> int:
@@ -243,11 +373,11 @@ class Batch(Base):
         return "Unassigned"
 
 
-
 class Stock(Base):
     __tablename__ = "stock"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"), unique=True, nullable=False)
     current_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     minimum_stock: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
@@ -256,8 +386,11 @@ class Stock(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     batch: Mapped["Batch"] = relationship("Batch", back_populates="stock")
+    store_relation: Mapped["Store"] = relationship("Store")
 
 
 class MedicineLocationMapping(Base):
@@ -282,8 +415,9 @@ class Sales(Base):
     __tablename__ = "sales"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     cashier_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    doctor_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    doctor_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("doctors.id", ondelete="SET NULL"), nullable=True)
     customer_name: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     customer_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     total_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0, nullable=False)
@@ -294,9 +428,12 @@ class Sales(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
+    store: Mapped["Store"] = relationship("Store", back_populates="sales")
     cashier: Mapped["User"] = relationship("User", foreign_keys=[cashier_id], back_populates="sales_created")
-    doctor: Mapped[Optional["User"]] = relationship("User", foreign_keys=[doctor_id], back_populates="sales_referred")
+    doctor: Mapped[Optional["Doctor"]] = relationship("Doctor", back_populates="sales_referred")
     items: Mapped[List["SaleItem"]] = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan")
 
 
@@ -304,6 +441,7 @@ class SaleItem(Base):
     __tablename__ = "sale_items"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     sale_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sales.id", ondelete="CASCADE"), nullable=False)
     batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("batches.id", ondelete="RESTRICT"), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -317,6 +455,7 @@ class SaleItem(Base):
 
     sale: Mapped["Sales"] = relationship("Sales", back_populates="items")
     batch: Mapped["Batch"] = relationship("Batch", back_populates="sale_items")
+    store_relation: Mapped["Store"] = relationship("Store")
 
 
 # ==========================================
@@ -331,7 +470,7 @@ class PriceHistory(Base):
     new_doctor_rate: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     old_customer_rate: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     new_customer_rate: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    changed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)  # FK logic handled conceptually, store direct UUID
+    changed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -454,39 +593,46 @@ class SystemSetting(Base):
     __tablename__ = "system_settings"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     store_name: Mapped[str] = mapped_column(String(255), default="Alpha Pharmacy", nullable=False)
-    currency: Mapped[str] = mapped_column(String(10), default="$", nullable=False)  # ₹, $, €, £
+    currency: Mapped[str] = mapped_column(String(10), default="$", nullable=False)
     customer_margin: Mapped[float] = mapped_column(Numeric(5, 2), default=30.0, nullable=False)
     doctor_margin: Mapped[float] = mapped_column(Numeric(5, 2), default=15.0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    store: Mapped["Store"] = relationship("Store", back_populates="system_settings")
 
 
 class Customer(Base):
     __tablename__ = "customers"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
-    phone: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    store: Mapped["Store"] = relationship("Store", back_populates="customers")
 
 
 class SystemLog(Base):
     __tablename__ = "system_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    log_level: Mapped[str] = mapped_column(String(50), nullable=False)  # ERROR, WARNING, INFO
-    module: Mapped[str] = mapped_column(String(100), nullable=False)     # auth, purchase, sales, etc.
+    store_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
+    log_level: Mapped[str] = mapped_column(String(50), nullable=False)
+    module: Mapped[str] = mapped_column(String(100), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     stack_trace: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     request_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     request_method: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-
-
