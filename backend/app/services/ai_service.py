@@ -26,11 +26,16 @@ class ExtractedInvoiceItem(BaseModel):
     company: str = Field(description="The manufacturer/company name of the medicine if available or known. If not present, return empty string.")
     pack_size: str = Field(description="The pack configuration or packaging unit, e.g. 10s, 16x500ml, 15g, if available or known. If not present, return empty string.")
     generic_name: str = Field(description="The generic active ingredient/chemical name of the medicine if available or known. If not present, return empty string.")
+    confidence: float = Field(default=1.0, description="The confidence level of this row's extraction from 0.0 to 1.0. Lower confidence indicates ambiguous data alignment.")
 
 class ExtractedInvoice(BaseModel):
     invoice_number: str = Field(description="The invoice number or billing number found on the invoice")
     supplier_name: str = Field(description="The name of the supplying agency, company, or distributor")
     invoice_date: str = Field(description="The invoice issue date in YYYY-MM-DD format")
+    supplier_address: Optional[str] = Field(None, description="The physical address of the supplying agency/supplier. Extract full address block if available.")
+    supplier_city: Optional[str] = Field(None, description="The city name of the supplying agency/supplier.")
+    supplier_state: Optional[str] = Field(None, description="The state name of the supplying agency/supplier.")
+    supplier_gst: Optional[str] = Field(None, description="The GST/tax registration number of the supplying agency/supplier.")
     items: List[ExtractedInvoiceItem]
 
 
@@ -61,6 +66,10 @@ class RateComparisonItem(BaseModel):
     company: Optional[str] = None
     pack_size: Optional[str] = None
     generic_name: Optional[str] = None
+    confidence: float = 1.0
+    needs_review: bool = False
+    review_reasons: List[str] = []
+    category_id: Optional[uuid.UUID] = None
 
 class InvoiceAnalysisReport(BaseModel):
     file_name: str
@@ -70,6 +79,11 @@ class InvoiceAnalysisReport(BaseModel):
     extracted_items: List[RateComparisonItem]
     total_increases: int
     total_decreases: int
+    supplier_id: Optional[uuid.UUID] = None
+    supplier_address: Optional[str] = None
+    supplier_city: Optional[str] = None
+    supplier_state: Optional[str] = None
+    supplier_gst: Optional[str] = None
 
 
 # ==========================================
@@ -110,7 +124,9 @@ class AIService:
                     "purchase rate, and GST rate percentage (e.g. 12.0 or 18.0, default to 0.0 if not present). "
                     "Additionally, try to extract the manufacturer/company name, the packaging pack size (e.g. 10s, 16x500ml, 15g), "
                     "and the generic name / active ingredient for each medicine if they are specified or can be inferred. "
-                    "Ensure dates are strictly in YYYY-MM-DD format."
+                    "Ensure dates are strictly in YYYY-MM-DD format.\n"
+                    "Extract supplier details: physical address, city, state, and GST/tax registration number of the supplier.\n"
+                    "CRITICAL: Be extremely careful with row alignment. Ensure that the medicine name, batch number, quantity, purchase rate, and MRP are from the exact same horizontal line in the table. Do not mix values from adjacent rows (which causes row-shift rate mismatches)."
                 )
 
                 response_text = None
@@ -131,6 +147,22 @@ class AIService:
                         "invoice_date": {
                             "type": "STRING",
                             "description": "The invoice issue date in YYYY-MM-DD format"
+                        },
+                        "supplier_address": {
+                            "type": "STRING",
+                            "description": "The physical address of the supplying agency/supplier. Extract full address block if available."
+                        },
+                        "supplier_city": {
+                            "type": "STRING",
+                            "description": "The city name of the supplying agency/supplier."
+                        },
+                        "supplier_state": {
+                            "type": "STRING",
+                            "description": "The state name of the supplying agency/supplier."
+                        },
+                        "supplier_gst": {
+                            "type": "STRING",
+                            "description": "The GST/tax registration number of the supplying agency/supplier."
                         },
                         "items": {
                             "type": "ARRAY",
@@ -181,6 +213,10 @@ class AIService:
                                     "generic_name": {
                                         "type": "STRING",
                                         "description": "The generic active ingredient/chemical name of the medicine if available or known. If not present, return empty string."
+                                    },
+                                    "confidence": {
+                                        "type": "NUMBER",
+                                        "description": "The confidence level of this row's extraction from 0.0 to 1.0. Lower confidence indicates ambiguous data alignment."
                                     }
                                 },
                                 "required": [
@@ -194,7 +230,8 @@ class AIService:
                                     "gst",
                                     "company",
                                     "pack_size",
-                                    "generic_name"
+                                    "generic_name",
+                                    "confidence"
                                 ]
                             }
                         }
@@ -294,6 +331,45 @@ class AIService:
         total_increases = 0
         total_decreases = 0
 
+        # Resolve or auto-create supplier agency
+        supplier_id = None
+        if extracted.supplier_name:
+            from app.repositories.all_repos import agency_repo
+            matched_supplier = await agency_repo.get_by_name_and_address(
+                db, name=extracted.supplier_name, address=extracted.supplier_address, store_id=store_id
+            )
+            if matched_supplier:
+                supplier_id = matched_supplier.id
+                # Update missing details if present in extraction
+                updated_data = {}
+                if not matched_supplier.address and extracted.supplier_address:
+                    updated_data["address"] = extracted.supplier_address
+                if not matched_supplier.city and extracted.supplier_city:
+                    updated_data["city"] = extracted.supplier_city
+                if not matched_supplier.state and extracted.supplier_state:
+                    updated_data["state"] = extracted.supplier_state
+                if not matched_supplier.gst_number and extracted.supplier_gst:
+                    updated_data["gst_number"] = extracted.supplier_gst
+                if updated_data:
+                    await agency_repo.update(db, db_obj=matched_supplier, obj_in=updated_data)
+                    await db.flush()
+            else:
+                # Auto-create the supplier agency
+                new_supplier = await agency_repo.create(
+                    db,
+                    obj_in={
+                        "store_id": store_id,
+                        "name": extracted.supplier_name,
+                        "address": extracted.supplier_address,
+                        "city": extracted.supplier_city,
+                        "state": extracted.supplier_state,
+                        "gst_number": extracted.supplier_gst,
+                        "is_active": True
+                    }
+                )
+                await db.flush()
+                supplier_id = new_supplier.id
+
         for item in extracted.items:
             # Try to fetch existing medicine matching by name
             medicine = await medicine_repo.get_by_name(db, item.medicine_name, store_id=store_id)
@@ -345,6 +421,25 @@ class AIService:
             except ValueError:
                 exp_date = date.today()  # fallback safety
 
+            # Row validation checks (needs_review / review_reasons)
+            needs_review = False
+            review_reasons = []
+            
+            confidence = getattr(item, "confidence", 1.0)
+            if confidence < 0.9:
+                needs_review = True
+                review_reasons.append(f"Low OCR confidence ({round(confidence * 100)}%)")
+                
+            if mrp < item.purchase_rate:
+                needs_review = True
+                review_reasons.append(f"MRP ({mrp}) is less than Purchase Rate ({item.purchase_rate})")
+                
+            if medicine and old_rate > 0:
+                price_diff_pct = abs(item.purchase_rate - old_rate) / old_rate
+                if price_diff_pct > 0.50:
+                    needs_review = True
+                    review_reasons.append(f"Purchase rate changed drastically by {round(price_diff_pct * 100)}% (from {old_rate} to {item.purchase_rate})")
+
             analysis_items.append(
                 RateComparisonItem(
                     medicine_id=medicine.id if medicine else None,
@@ -367,7 +462,10 @@ class AIService:
                     recommended_customer_rate=round(rec_customer, 2),
                     company=getattr(item, "company", None),
                     pack_size=getattr(item, "pack_size", None),
-                    generic_name=getattr(item, "generic_name", None)
+                    generic_name=getattr(item, "generic_name", None),
+                    confidence=confidence,
+                    needs_review=needs_review,
+                    review_reasons=review_reasons
                 )
             )
 
@@ -384,7 +482,12 @@ class AIService:
             invoice_date=inv_date,
             extracted_items=analysis_items,
             total_increases=total_increases,
-            total_decreases=total_decreases
+            total_decreases=total_decreases,
+            supplier_id=supplier_id,
+            supplier_address=extracted.supplier_address,
+            supplier_city=extracted.supplier_city,
+            supplier_state=extracted.supplier_state,
+            supplier_gst=extracted.supplier_gst
         )
 
     def _get_mock_extraction(self, file_name: Optional[str] = None) -> ExtractedInvoice:
@@ -405,6 +508,10 @@ class AIService:
             invoice_number=invoice_number,
             supplier_name=supplier_name,
             invoice_date="2026-06-11",
+            supplier_address="123 Main St, Sector 5",
+            supplier_city="Ahmedabad",
+            supplier_state="Gujarat",
+            supplier_gst="24AAAAS1234A1Z1",
             items=[
                 ExtractedInvoiceItem(
                     medicine_name="CEFTUM-500 MG",  # Matches existing medicine to trigger price change
@@ -417,7 +524,8 @@ class AIService:
                     gst=12.00,
                     company="GlaxoSmithKline",
                     pack_size="10's",
-                    generic_name="Cefuroxime Axetil"
+                    generic_name="Cefuroxime Axetil",
+                    confidence=0.98
                 ),
                 ExtractedInvoiceItem(
                     medicine_name="DIGENE GEL (MINT)",  # Matches existing medicine to trigger price change
@@ -430,7 +538,8 @@ class AIService:
                     gst=12.00,
                     company="Abbott India",
                     pack_size="200ml",
-                    generic_name="Antacid"
+                    generic_name="Antacid",
+                    confidence=0.95
                 ),
                 ExtractedInvoiceItem(
                     medicine_name="Mock New Medicine AAA",  # Does not exist, triggers auto-creation
@@ -443,7 +552,64 @@ class AIService:
                     gst=18.00,
                     company="Mock Pharma",
                     pack_size="10s",
-                    generic_name="Mock Generic"
+                    generic_name="Mock Generic",
+                    confidence=0.96
+                ),
+                ExtractedInvoiceItem(
+                    medicine_name="ZERODAL TAB",
+                    batch_no="ZD9988",
+                    expiry_date="2027-08-31",
+                    quantity=10,
+                    free_quantity=0,
+                    purchase_rate=51.22,
+                    mrp=75.00,
+                    gst=12.00,
+                    company="Ipca Laboratories",
+                    pack_size="10s",
+                    generic_name="Aceclofenac",
+                    confidence=0.97
+                ),
+                ExtractedInvoiceItem(
+                    medicine_name="TIXYLIX SYP",
+                    batch_no="TX1122",
+                    expiry_date="2027-05-31",
+                    quantity=5,
+                    free_quantity=0,
+                    purchase_rate=97.25,
+                    mrp=130.00,
+                    gst=12.00,
+                    company="Abbott",
+                    pack_size="60ml",
+                    generic_name="Cough Syrup",
+                    confidence=0.96
+                ),
+                ExtractedInvoiceItem(
+                    medicine_name="GLIMESTAR-M2 TAB",
+                    batch_no="GM5566",
+                    expiry_date="2028-02-29",
+                    quantity=20,
+                    free_quantity=0,
+                    purchase_rate=123.22,
+                    mrp=180.00,
+                    gst=12.00,
+                    company="Mankind",
+                    pack_size="15s",
+                    generic_name="Glimepiride + Metformin",
+                    confidence=0.99
+                ),
+                ExtractedInvoiceItem(
+                    medicine_name="AMBRODIL-S SYP",
+                    batch_no="AB4433",
+                    expiry_date="2027-10-31",
+                    quantity=8,
+                    free_quantity=0,
+                    purchase_rate=27.86,
+                    mrp=45.00,
+                    gst=12.00,
+                    company="Aristo",
+                    pack_size="100ml",
+                    generic_name="Ambroxol + Salbutamol",
+                    confidence=0.98
                 )
             ]
         )

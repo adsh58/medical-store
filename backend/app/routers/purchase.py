@@ -103,11 +103,8 @@ async def upload_invoice_ai(
         
         # 5. Check duplicate invoice existence
         is_duplicate = False
-        query_agency = select(Agency).filter(Agency.name == report.supplier_name, Agency.store_id == current_user.store_id)
-        res_agency = await db.execute(query_agency)
-        agency = res_agency.scalars().first()
-        if agency:
-            existing = await invoice_repo.get_by_number(db, agency.id, report.invoice_number, store_id=current_user.store_id)
+        if report.supplier_id:
+            existing = await invoice_repo.get_by_number(db, report.supplier_id, report.invoice_number, store_id=current_user.store_id)
             if existing:
                 is_duplicate = True
                 

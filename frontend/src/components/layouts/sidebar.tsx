@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Pill, PlusCircle, Package, 
   FileSpreadsheet, UploadCloud, Grid, AlertTriangle, 
   BarChart3, Settings, LogOut, ShieldAlert, Sparkles,
-  ShoppingCart, Tag, UserCheck, Users
+  ShoppingCart, Tag, UserCheck, Users, Truck
 } from "lucide-react";
 
 interface SidebarProps {
@@ -29,6 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     { name: "Categories", href: "/categories", icon: Tag, roles: ["ADMIN", "MANAGER"] },
     { name: "Doctors", href: "/doctors", icon: UserCheck, roles: ["ADMIN", "MANAGER"] },
     { name: "Customers", href: "/customers", icon: Users, roles: ["ADMIN", "MANAGER"] },
+    { name: "Suppliers", href: "/suppliers", icon: Truck, roles: ["ADMIN", "MANAGER"] },
     { name: "Inventory", href: "/inventory", icon: Package, roles: ["ADMIN", "MANAGER"] },
     { name: "Purchase Invoices", href: "/purchases", icon: FileSpreadsheet, roles: ["ADMIN", "MANAGER"] },
     { name: "Upload Invoice", href: "/purchases/upload", icon: UploadCloud, roles: ["ADMIN", "MANAGER"] },

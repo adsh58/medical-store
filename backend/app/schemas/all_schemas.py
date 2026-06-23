@@ -244,6 +244,21 @@ class AgencyCreate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    gst_number: Optional[str] = None
+    is_active: bool = True
+
+class AgencyUpdate(BaseModel):
+    name: Optional[str] = None
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    gst_number: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class AgencyResponse(BaseModel):
     id: uuid.UUID
@@ -252,7 +267,41 @@ class AgencyResponse(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    gst_number: Optional[str] = None
+    is_active: bool
+    display_name: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def set_display_name(cls, data: any) -> any:
+        if isinstance(data, dict):
+            name = data.get("name")
+            city = data.get("city")
+            address = data.get("address")
+            if name:
+                if city:
+                    data["display_name"] = f"{name} ({city})"
+                elif address:
+                    addr_part = address.split("\n")[0].split(",")[0]
+                    data["display_name"] = f"{name} - {addr_part[:40]}"
+                else:
+                    data["display_name"] = name
+        elif hasattr(data, "name"):
+            name = data.name
+            city = getattr(data, "city", None)
+            address = getattr(data, "address", None)
+            if name:
+                if city:
+                    data.display_name = f"{name} ({city})"
+                elif address:
+                    addr_part = address.split("\n")[0].split(",")[0]
+                    data.display_name = f"{name} - {addr_part[:40]}"
+                else:
+                    data.display_name = name
+        return data
 
 
 # ==========================================
@@ -356,6 +405,7 @@ class AIInvoiceItemCommit(BaseModel):
     company: Optional[str] = None
     pack_size: Optional[str] = None
     generic_name: Optional[str] = None
+    category_id: Optional[uuid.UUID] = None
 
 class AIInvoiceCommitRequest(BaseModel):
     agency_id: uuid.UUID

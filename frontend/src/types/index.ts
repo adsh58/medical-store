@@ -106,6 +106,11 @@ export interface Agency {
   phone?: string;
   email?: string;
   address?: string;
+  city?: string;
+  state?: string;
+  gst_number?: string;
+  is_active: boolean;
+  display_name?: string;
 }
 
 export interface PurchaseInvoiceItem {

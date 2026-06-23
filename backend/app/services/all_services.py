@@ -419,19 +419,22 @@ class PurchaseService:
                 medicine = await medicine_repo.get_by_name(db, item.medicine_name, store_id=store_id)
                 
             if not medicine:
-                res_cat = await db.execute(select(MasterCategory).filter(MasterCategory.name == "Uncategorized"))
-                category = res_cat.scalars().first()
-                if not category:
-                    category = MasterCategory(name="Uncategorized", description="AI Auto-Created")
-                    db.add(category)
-                    await db.flush()
+                category_id = item.category_id
+                if not category_id:
+                    res_cat = await db.execute(select(MasterCategory).filter(MasterCategory.name == "Uncategorized"))
+                    category = res_cat.scalars().first()
+                    if not category:
+                        category = MasterCategory(name="Uncategorized", description="AI Auto-Created")
+                        db.add(category)
+                        await db.flush()
+                    category_id = category.id
                 
                 extracted_pack = item.pack_size or "AI Extracted Pack"
                 extracted_company = item.company or "AI Extracted Company"
                 extracted_generic = item.generic_name or "AI Extracted Generic"
                 
                 med_in = MedicineCreate(
-                    category_id=category.id,
+                    category_id=category_id,
                     name=item.medicine_name,
                     generic_name=extracted_generic,
                     company=extracted_company,

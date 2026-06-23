@@ -1,7 +1,7 @@
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 import uuid
 
 from app.repositories.base import BaseRepository
@@ -218,6 +218,72 @@ class AgencyRepository(BaseRepository[Agency]):
         )
         result = await db.execute(query)
         return result.scalars().first()
+
+    async def get_by_name_and_address(
+        self, db: AsyncSession, name: str, address: Optional[str], *, store_id: uuid.UUID
+    ) -> Optional[Agency]:
+        name_clean = name.strip().lower()
+        address_clean = (address or "").strip().lower()
+        
+        # 1. Try to match exact Name + Address
+        query = select(self.model).filter(
+            self.model.store_id == store_id,
+            self.model.deleted_at == None,
+            func.lower(self.model.name) == name_clean
+        )
+        
+        if address_clean:
+            query_exact = query.filter(func.lower(func.coalesce(self.model.address, "")) == address_clean)
+            result = await db.execute(query_exact)
+            exact_match = result.scalars().first()
+            if exact_match:
+                return exact_match
+                
+        # 2. Try to match Name + Empty/Null Address (generic supplier to be enriched)
+        query_generic = query.filter(or_(self.model.address == None, func.lower(self.model.address) == ""))
+        result = await db.execute(query_generic)
+        generic_match = result.scalars().first()
+        if generic_match:
+            return generic_match
+            
+        return None
+
+    async def get_multi_filtered(
+        self, db: AsyncSession, *, skip: int = 0, limit: int = 100, store_id: uuid.UUID, search: Optional[str] = None
+    ) -> List[Agency]:
+        query = select(self.model).filter(
+            self.model.store_id == store_id,
+            self.model.deleted_at == None
+        )
+        if search:
+            query = query.filter(
+                or_(
+                    self.model.name.ilike(f"%{search}%"),
+                    self.model.city.ilike(f"%{search}%"),
+                    self.model.gst_number.ilike(f"%{search}%")
+                )
+            )
+        query = query.order_by(self.model.name).offset(skip).limit(limit)
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+    async def count_filtered(
+        self, db: AsyncSession, *, store_id: uuid.UUID, search: Optional[str] = None
+    ) -> int:
+        query = select(func.count(self.model.id)).filter(
+            self.model.store_id == store_id,
+            self.model.deleted_at == None
+        )
+        if search:
+            query = query.filter(
+                or_(
+                    self.model.name.ilike(f"%{search}%"),
+                    self.model.city.ilike(f"%{search}%"),
+                    self.model.gst_number.ilike(f"%{search}%")
+                )
+            )
+        result = await db.execute(query)
+        return result.scalar() or 0
 
 class PurchaseInvoiceRepository(BaseRepository[PurchaseInvoice]):
     async def get_by_number(self, db: AsyncSession, agency_id: uuid.UUID, invoice_number: str, *, store_id: uuid.UUID) -> Optional[PurchaseInvoice]:
