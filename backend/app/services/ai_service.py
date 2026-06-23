@@ -239,74 +239,86 @@ class AIService:
                     "required": ["invoice_number", "supplier_name", "invoice_date", "items"]
                 }
 
-                for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-1.0-pro"]:
-                    try:
-                        logger.info(f"Attempting content generation using schema mode on: {model_name}")
-                        model = genai.GenerativeModel(model_name)
-                        
-                        logger.info(f"Selected model: {model_name}")
-                        logger.info(f"Request payload: prompt='{prompt}', media_part_keys={list(media_part.keys())}")
-                        logger.info(f"Schema payload: {extracted_invoice_schema}")
-                        
-                        response = model.generate_content(
-                            [prompt, media_part],
-                            generation_config=genai.GenerationConfig(
-                                response_mime_type="application/json",
-                                response_schema=extracted_invoice_schema,
-                                temperature=0.0
-                            )
-                        )
-                        response_text = response.text
-                        logger.info(f"Gemini response: {response_text}")
-                        break
-                    except Exception as e:
-                        logger.warning(f"Schema mode failed with model {model_name}: {str(e)}")
-                        logger.exception(f"Gemini exception stack trace for model {model_name} schema mode:")
-                        errors.append(f"{model_name} (schema mode): {str(e)}")
-                        
-                        # Fallback plain JSON strategy for this model
+                import time
+                import asyncio
+
+                models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash"]
+                request_count = 0
+                rate_limit_occurrences = 0
+                response_text = None
+                
+                for model_name in models_to_try:
+                    logger.info(f"Attempting content extraction using model: {model_name}")
+                    model = genai.GenerativeModel(model_name)
+                    
+                    backoff_delays = [10, 20, 40]
+                    attempt = 0
+                    
+                    while attempt <= len(backoff_delays):
+                        request_count += 1
+                        start_time = time.time()
                         try:
-                            logger.info(f"Attempting content generation using fallback plain JSON mode on: {model_name}")
-                            fallback_prompt = (
-                                prompt + 
-                                "\n\nIMPORTANT: Return your response strictly as a JSON object matching this schema. "
-                                "Do not include any extra text, markdown formatting (like ```json), or explanations. "
-                                f"Schema structure:\n{extracted_invoice_schema}"
-                            )
+                            logger.info(f"Sending API request {request_count} (attempt {attempt + 1}) to {model_name}")
                             response = model.generate_content(
-                                [fallback_prompt, media_part],
+                                [prompt, media_part],
                                 generation_config=genai.GenerationConfig(
                                     response_mime_type="application/json",
+                                    response_schema=extracted_invoice_schema,
                                     temperature=0.0
                                 )
                             )
-                            resp_text = response.text.strip()
-                            if resp_text.startswith("```json"):
-                                resp_text = resp_text[7:]
-                            if resp_text.endswith("```"):
-                                resp_text = resp_text[:-3]
-                            resp_text = resp_text.strip()
+                            response_text = response.text
+                            duration = time.time() - start_time
                             
-                            logger.info(f"Gemini fallback response text: {resp_text}")
+                            # Log request details
+                            logger.info(
+                                f"API request {request_count} succeeded on model {model_name} in {duration:.2f}s. "
+                                f"Response length: {len(response_text) if response_text else 0}"
+                            )
                             
-                            # Validate JSON parses correctly
-                            import json
-                            json.loads(resp_text)
+                            try:
+                                token_count = model.count_tokens([prompt, media_part]).total_tokens
+                                logger.info(f"Token count for request: {token_count}")
+                            except Exception as token_err:
+                                logger.warning(f"Could not count tokens: {str(token_err)}")
+                                
+                            break  # Success, exit retry loop
+                        except Exception as e:
+                            duration = time.time() - start_time
+                            err_msg = str(e)
+                            is_429 = "429" in err_msg or "quota" in err_msg.lower() or "exhausted" in err_msg.lower() or "rate limit" in err_msg.lower()
                             
-                            response_text = resp_text
-                            break
-                        except Exception as fe:
-                            logger.warning(f"Fallback plain JSON mode failed with model {model_name}: {str(fe)}")
-                            logger.exception(f"Gemini exception stack trace for model {model_name} fallback mode:")
-                            errors.append(f"{model_name} (fallback mode): {str(fe)}")
-                
+                            if is_429:
+                                rate_limit_occurrences += 1
+                                logger.warning(
+                                    f"API request {request_count} to {model_name} failed with HTTP 429 Rate Limit in {duration:.2f}s. "
+                                    f"Occurrence count: {rate_limit_occurrences}. Error: {err_msg}"
+                                )
+                                if attempt < len(backoff_delays):
+                                    delay = backoff_delays[attempt]
+                                    logger.info(f"Exponential backoff retry {attempt + 1}. Waiting {delay} seconds...")
+                                    await asyncio.sleep(delay)
+                                    attempt += 1
+                                    continue
+                                else:
+                                    logger.error(f"All retries exhausted for model {model_name} due to rate limits.")
+                                    errors.append(f"{model_name}: Rate limited (429) after {attempt} retries.")
+                                    break
+                            else:
+                                logger.error(
+                                    f"API request {request_count} to {model_name} failed with non-429 error in {duration:.2f}s: {err_msg}"
+                                )
+                                errors.append(f"{model_name}: {err_msg}")
+                                break
+                    
+                    if response_text is not None:
+                        break
+                        
                 if response_text is None:
-                    try:
-                        available_models = [m.name for m in genai.list_models()]
-                        logger.error(f"Available models for this API key: {available_models}")
-                    except Exception as list_err:
-                        logger.error(f"Failed to list models: {str(list_err)}")
-                    raise BadRequestException(f"AI Extraction failed on all fallback models: {'; '.join(errors)}")
+                    if rate_limit_occurrences > 0:
+                        raise BadRequestException("AI service is temporarily rate limited. Please wait 1 minute and try again.")
+                    else:
+                        raise BadRequestException(f"AI Extraction failed on all fallback models: {'; '.join(errors)}")
 
                 # Parsed schema validation
                 extracted_invoice = ExtractedInvoice.model_validate_json(response_text)
@@ -314,6 +326,10 @@ class AIService:
 
             except Exception as e:
                 logger.exception(f"Gemini API call failed: {str(e)}")
+                if isinstance(e, BadRequestException):
+                    raise e
+                if "429" in str(e) or "quota" in str(e).lower() or "exhausted" in str(e).lower():
+                    raise BadRequestException("AI service is temporarily rate limited. Please wait 1 minute and try again.")
                 raise BadRequestException(f"AI Extraction failed: {str(e)}")
         else:
             # Fallback mock parsing mode for testing / clean local execution
