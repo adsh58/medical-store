@@ -50,9 +50,18 @@ export interface BatchStock {
   location_coordinate: string;
 }
 
+export interface Company {
+  id: string;
+  name: string;
+  type: string;
+  description?: string;
+  created_at: string;
+}
+
 export interface Medicine {
   id: string;
   category_id: string;
+  company_id?: string;
   name: string;
   generic_name: string;
   company: string;

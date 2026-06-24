@@ -72,8 +72,17 @@ class MedicineService:
             
         master_med = await medicine_repo.get_by_name_global(db, medicine_in.name)
         if not master_med:
+            from app.models.all_models import Company
+            res_comp = await db.execute(select(Company).filter(Company.name == medicine_in.company, Company.deleted_at == None))
+            comp_obj = res_comp.scalars().first()
+            if not comp_obj:
+                comp_obj = Company(name=medicine_in.company, type="Standard")
+                db.add(comp_obj)
+                await db.flush()
+                
             master_med = await master_medicine_repo.create(db, obj_in={
                 "category_id": medicine_in.category_id,
+                "company_id": comp_obj.id,
                 "name": medicine_in.name,
                 "generic_name": medicine_in.generic_name,
                 "company": medicine_in.company,
@@ -136,8 +145,16 @@ class MedicineService:
         if medicine_in.generic_name:
             master_update["generic_name"] = medicine_in.generic_name
         if medicine_in.company:
+            from app.models.all_models import Company
+            res_comp = await db.execute(select(Company).filter(Company.name == medicine_in.company, Company.deleted_at == None))
+            comp_obj = res_comp.scalars().first()
+            if not comp_obj:
+                comp_obj = Company(name=medicine_in.company, type="Standard")
+                db.add(comp_obj)
+                await db.flush()
             master_update["company"] = medicine_in.company
             master_update["manufacturer"] = medicine_in.company
+            master_update["company_id"] = comp_obj.id
         if medicine_in.pack_size:
             master_update["pack_size"] = medicine_in.pack_size
         if medicine_in.category_id:
@@ -480,7 +497,15 @@ class PurchaseService:
                 if item.category_id:
                     medicine.master_medicine.category_id = item.category_id
                 if item.company:
+                    from app.models.all_models import Company
+                    res_comp = await db.execute(select(Company).filter(Company.name == item.company, Company.deleted_at == None))
+                    comp_obj = res_comp.scalars().first()
+                    if not comp_obj:
+                        comp_obj = Company(name=item.company, type="Standard")
+                        db.add(comp_obj)
+                        await db.flush()
                     medicine.master_medicine.company = item.company
+                    medicine.master_medicine.company_id = comp_obj.id
                 medicine.updated_by_user_id = user_id
                 db.add(medicine)
                 await db.flush()

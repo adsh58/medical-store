@@ -121,10 +121,25 @@ class MasterMedicineCreate(BaseModel):
 class MasterMedicineResponse(BaseModel):
     id: uuid.UUID
     category_id: uuid.UUID
+    company_id: Optional[uuid.UUID] = None
     name: str
     generic_name: str
     company: str
     pack_size: str
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CompanyCreate(BaseModel):
+    name: str
+    type: str  # Standard or Generic
+    description: Optional[str] = None
+
+class CompanyResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    type: str
+    description: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -179,6 +194,7 @@ class BatchStockResponse(BaseModel):
 class MedicineResponse(BaseModel):
     id: uuid.UUID
     category_id: uuid.UUID
+    company_id: Optional[uuid.UUID] = None
     name: str
     generic_name: str
     company: str

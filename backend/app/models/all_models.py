@@ -110,11 +110,27 @@ class MasterCategory(Base):
     master_medicines: Mapped[List["MasterMedicine"]] = relationship("MasterMedicine", back_populates="category", cascade="all, delete-orphan")
 
 
+class Company(Base):
+    __tablename__ = "master_companies"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    type: Mapped[str] = mapped_column(String(50), default="Standard", nullable=False)  # Standard or Generic
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    master_medicines: Mapped[List["MasterMedicine"]] = relationship("MasterMedicine", back_populates="company_relation", cascade="all, delete-orphan")
+
+
 class MasterMedicine(Base):
     __tablename__ = "master_medicines"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     category_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("master_categories.id", ondelete="RESTRICT"), nullable=False)
+    company_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("master_companies.id", ondelete="RESTRICT"), nullable=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     generic_name: Mapped[str] = mapped_column(String(255), nullable=False)
     company: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -126,6 +142,7 @@ class MasterMedicine(Base):
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     category: Mapped["MasterCategory"] = relationship("MasterCategory", back_populates="master_medicines", lazy="joined")
+    company_relation: Mapped[Optional["Company"]] = relationship("Company", back_populates="master_medicines", lazy="joined")
     store_medicines: Mapped[List["Medicine"]] = relationship("Medicine", back_populates="master_medicine", cascade="all, delete-orphan")
 
 
@@ -174,6 +191,10 @@ class Medicine(Base):
     @property
     def category_id(self) -> Optional[uuid.UUID]:
         return self.master_medicine.category_id if self.master_medicine else None
+
+    @property
+    def company_id(self) -> Optional[uuid.UUID]:
+        return self.master_medicine.company_id if self.master_medicine else None
 
     @property
     def category(self) -> Optional[MasterCategory]:

@@ -7,13 +7,13 @@ from app.database import get_db
 from app.schemas.all_schemas import (
     MedicineCreate, MedicineResponse, PriceHistoryResponse,
     AssistantSearchRequest, AssistantSearchResponse, MedicineUpdate,
-    MedicineCategoryCreate, MedicineCategoryResponse
+    MedicineCategoryCreate, MedicineCategoryResponse, CompanyCreate, CompanyResponse
 )
 from app.services.all_services import medicine_service
 from app.services.ai_service import ai_service
 from app.repositories.all_repos import medicine_repo, price_history_repo, category_repo
 from app.core.dependencies import RoleChecker, get_current_user
-from app.models.all_models import User, MasterCategory
+from app.models.all_models import User, MasterCategory, Company
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.core.cache import query_cache
 
@@ -98,6 +98,102 @@ async def delete_category(
     await db.commit()
     query_cache.delete("categories:list")
     return {"success": True, "message": "Category deleted successfully"}
+
+
+@router.post("/companies", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED)
+async def create_company(
+    company_in: CompanyCreate,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+):
+    from sqlalchemy import select
+    existing = await db.execute(select(Company).filter(Company.name == company_in.name, Company.deleted_at == None))
+    if existing.scalars().first():
+        raise BadRequestException("Company with this name already exists")
+    
+    comp = Company(
+        name=company_in.name,
+        type=company_in.type,
+        description=company_in.description
+    )
+    db.add(comp)
+    await db.commit()
+    query_cache.delete("companies:list")
+    return comp
+
+@router.get("/companies", response_model=List[CompanyResponse])
+async def list_companies(
+    search: Optional[str] = Query(None, description="Search company name or description"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from sqlalchemy import or_
+    from sqlalchemy.future import select
+    
+    cache_key = f"companies:list:{search or 'all'}"
+    cached = query_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    query = select(Company).filter(Company.deleted_at == None)
+    if search:
+        query = query.filter(
+            or_(
+                Company.name.ilike(f"%{search}%"),
+                Company.description.ilike(f"%{search}%")
+            )
+        )
+    query = query.order_by(Company.name.asc())
+    res = await db.execute(query)
+    comps = list(res.scalars().all())
+    query_cache.set(cache_key, comps)
+    return comps
+
+@router.put("/companies/{id}", response_model=CompanyResponse)
+async def update_company(
+    id: uuid.UUID,
+    company_in: CompanyCreate,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+):
+    from sqlalchemy.future import select
+    res = await db.execute(select(Company).filter(Company.id == id, Company.deleted_at == None))
+    comp = res.scalars().first()
+    if not comp:
+        raise NotFoundException("Company not found")
+        
+    if company_in.name != comp.name:
+        existing = await db.execute(select(Company).filter(Company.name == company_in.name, Company.deleted_at == None))
+        if existing.scalars().first():
+            raise BadRequestException("Company with this name already exists")
+            
+    comp.name = company_in.name
+    comp.type = company_in.type
+    comp.description = company_in.description
+    db.add(comp)
+    await db.commit()
+    query_cache.delete("companies:list")
+    return comp
+
+@router.delete("/companies/{id}")
+async def delete_company(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(RoleChecker(["ADMIN", "MANAGER"]))
+):
+    from sqlalchemy.future import select
+    from datetime import datetime
+    res = await db.execute(select(Company).filter(Company.id == id, Company.deleted_at == None))
+    comp = res.scalars().first()
+    if not comp:
+        raise NotFoundException("Company not found")
+    
+    comp.deleted_at = datetime.utcnow()
+    comp.is_deleted = True
+    db.add(comp)
+    await db.commit()
+    query_cache.delete("companies:list")
+    return {"success": True, "message": "Company deleted successfully"}
 
 
 @router.put("/{id}", response_model=MedicineResponse)

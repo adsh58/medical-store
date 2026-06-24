@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Save, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Save, ShieldAlert, FolderPlus, Plus } from "lucide-react";
 import Link from "next/link";
 import apiClient from "@/lib/api-client";
-import { MedicineCategory, Medicine } from "@/types";
+import { MedicineCategory, Medicine, Company } from "@/types";
 
 export default function EditMedicinePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -23,12 +23,26 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
   const [doctorRate, setDoctorRate] = useState<string>("");
   const [customerRate, setCustomerRate] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
+
+  const [categoryName, setCategoryName] = useState<string>("");
+  const [showCategoryModal, setShowCategoryModal] = useState<boolean>(false);
+
+  const [companyNameInput, setCompanyNameInput] = useState<string>("");
+  const [companyTypeInput, setCompanyTypeInput] = useState<string>("Standard");
+  const [companyDescInput, setCompanyDescInput] = useState<string>("");
+  const [showCompanyModal, setShowCompanyModal] = useState<boolean>(false);
+
   const [error, setError] = useState<string | null>(null);
 
   // Queries
   const { data: categories } = useQuery<MedicineCategory[]>({
     queryKey: ["categories"],
     queryFn: () => apiClient.get("/medicines/categories").then(res => res.data)
+  });
+
+  const { data: companies } = useQuery<Company[]>({
+    queryKey: ["companies"],
+    queryFn: () => apiClient.get("/medicines/companies").then(res => res.data).catch(() => [])
   });
 
   const { data: medicine, isLoading: loadingMed } = useQuery<Medicine>({
@@ -61,6 +75,35 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
     },
     onError: (err: any) => {
       setError(err.response?.data?.error || "Failed to update medicine details.");
+    }
+  });
+
+  const addCategoryMutation = useMutation({
+    mutationFn: (name: string) => apiClient.post("/medicines/categories", { name }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      setCategoryId(res.data.id);
+      setShowCategoryModal(false);
+      setCategoryName("");
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error || "Failed to create category");
+    }
+  });
+
+  const addCompanyMutation = useMutation({
+    mutationFn: (data: { name: string; type: string; description?: string }) =>
+      apiClient.post("/medicines/companies", data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["companies"] });
+      setCompany(res.data.name);
+      setShowCompanyModal(false);
+      setCompanyNameInput("");
+      setCompanyTypeInput("Standard");
+      setCompanyDescInput("");
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error || "Failed to create company");
     }
   });
 
@@ -161,37 +204,62 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
               />
             </div>
 
-            {/* Category */}
+            {/* Category selection */}
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
                 Category *
               </label>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white text-slate-900 px-3.5 py-2.5 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
-                required
-              >
-                <option value="" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">Select Category</option>
-                {categories?.map((cat) => (
-                  <option key={cat.id} value={cat.id} className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">{cat.name}</option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <select
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  className="flex-1 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  required
+                >
+                  <option value="" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">Select Category</option>
+                  {categories?.map((cat) => (
+                    <option key={cat.id} value={cat.id} className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">{cat.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowCategoryModal(true)}
+                  className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-850"
+                  title="Add Category"
+                >
+                  <FolderPlus className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
-            {/* Company */}
+            {/* Company selection */}
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
                 Manufacturer Company *
               </label>
-              <input
-                type="text"
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                placeholder="e.g. GSK, Pfizer"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950"
-                required
-              />
+              <div className="flex gap-2">
+                <select
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  className="flex-1 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  required
+                >
+                  <option value="" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">Select Company</option>
+                  {companies?.map((comp) => (
+                    <option key={comp.id} value={comp.name} className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+                      {comp.name} ({comp.type})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowCompanyModal(true)}
+                  className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-850"
+                  title="Add Company"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
             {/* Pack Size */}
@@ -305,6 +373,121 @@ export default function EditMedicinePage({ params }: { params: Promise<{ id: str
           </div>
         </form>
       </div>
+
+      {/* Category Creation Modal Dialog */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4">Add Medicine Category</h3>
+            <input
+              type="text"
+              value={categoryName}
+              onChange={(e) => setCategoryName(e.target.value)}
+              placeholder="e.g. Injections, Syrup"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100 mb-4"
+            />
+            <div className="flex justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setShowCategoryModal(false)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-650 hover:bg-slate-50 dark:border-slate-850 dark:bg-slate-850 text-slate-900 dark:text-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!categoryName) {
+                    alert("Category name is required");
+                    return;
+                  }
+                  addCategoryMutation.mutate(categoryName);
+                }}
+                disabled={addCategoryMutation.isPending}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {addCategoryMutation.isPending ? "Creating..." : "Create Category"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Company Creation Modal Dialog */}
+      {showCompanyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4">Add Company</h3>
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Company Name *
+                </label>
+                <input
+                  type="text"
+                  value={companyNameInput}
+                  onChange={(e) => setCompanyNameInput(e.target.value)}
+                  placeholder="e.g. Cipla, Micro Labs"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Company Type *
+                </label>
+                <select
+                  value={companyTypeInput}
+                  onChange={(e) => setCompanyTypeInput(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                >
+                  <option value="Standard" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">Standard</option>
+                  <option value="Generic" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">Generic</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Description (Optional)
+                </label>
+                <textarea
+                  value={companyDescInput}
+                  onChange={(e) => setCompanyDescInput(e.target.value)}
+                  placeholder="Company description..."
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  rows={2}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setShowCompanyModal(false)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-655 hover:bg-slate-50 dark:border-slate-855 dark:bg-slate-855 text-slate-900 dark:text-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!companyNameInput) {
+                    alert("Company Name is required");
+                    return;
+                  }
+                  addCompanyMutation.mutate({
+                    name: companyNameInput,
+                    type: companyTypeInput,
+                    description: companyDescInput || undefined
+                  });
+                }}
+                disabled={addCompanyMutation.isPending}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {addCompanyMutation.isPending ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

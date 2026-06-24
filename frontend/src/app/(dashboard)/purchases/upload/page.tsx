@@ -4,10 +4,11 @@ import React, { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
   Upload, Sparkles, ShieldCheck, ShieldAlert, 
-  ArrowUpRight, ArrowDownRight, Check, AlertTriangle, X, Info
+  ArrowUpRight, ArrowDownRight, Check, AlertTriangle, X, Info,
+  FolderPlus, Plus
 } from "lucide-react";
 import apiClient from "@/lib/api-client";
-import { Agency } from "@/types";
+import { Agency, Company } from "@/types";
 import { useCurrency } from "@/hooks/useCurrency";
 
 interface RateComparisonItem {
@@ -155,6 +156,17 @@ export default function UploadInvoicePage() {
   const [pendingExtractedData, setPendingExtractedData] = useState<AIInvoiceAnalysisReport | null>(null);
   const [conflictResolution, setConflictResolution] = useState<string | null>(null);
 
+  // Quick Add States
+  const [categoryName, setCategoryName] = useState<string>("");
+  const [showCategoryModal, setShowCategoryModal] = useState<boolean>(false);
+  const [activeCategoryRowIndex, setActiveCategoryRowIndex] = useState<number | null>(null);
+
+  const [companyNameInput, setCompanyNameInput] = useState<string>("");
+  const [companyTypeInput, setCompanyTypeInput] = useState<string>("Standard");
+  const [companyDescInput, setCompanyDescInput] = useState<string>("");
+  const [showCompanyModal, setShowCompanyModal] = useState<boolean>(false);
+  const [activeCompanyRowIndex, setActiveCompanyRowIndex] = useState<number | null>(null);
+
   // Queries
   const { data: agencies } = useQuery<Agency[]>({
     queryKey: ["upload-agencies"],
@@ -164,6 +176,11 @@ export default function UploadInvoicePage() {
   const { data: categories } = useQuery<any[]>({
     queryKey: ["upload-categories"],
     queryFn: () => apiClient.get("/medicines/categories").then(res => res.data)
+  });
+
+  const { data: masterCompanies } = useQuery<Company[]>({
+    queryKey: ["companies"],
+    queryFn: () => apiClient.get("/medicines/companies").then(res => res.data).catch(() => [])
   });
 
   const { data: medicines } = useQuery<any[]>({
@@ -245,6 +262,42 @@ export default function UploadInvoicePage() {
     },
     onError: (err: any) => {
       alert(err.response?.data?.error || "Failed to commit invoice details");
+    }
+  });
+
+  const addCategoryMutation = useMutation({
+    mutationFn: (name: string) => apiClient.post("/medicines/categories", { name }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["upload-categories"] });
+      if (activeCategoryRowIndex !== null) {
+        handleItemFieldChange(activeCategoryRowIndex, "category_id", res.data.id);
+      }
+      setShowCategoryModal(false);
+      setCategoryName("");
+      setActiveCategoryRowIndex(null);
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error || "Failed to create category");
+    }
+  });
+
+  const addCompanyMutation = useMutation({
+    mutationFn: (data: { name: string; type: string; description?: string }) =>
+      apiClient.post("/medicines/companies", data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["companies"] });
+      queryClient.invalidateQueries({ queryKey: ["upload-companies"] });
+      if (activeCompanyRowIndex !== null) {
+        handleItemFieldChange(activeCompanyRowIndex, "company", res.data.name);
+      }
+      setShowCompanyModal(false);
+      setCompanyNameInput("");
+      setCompanyTypeInput("Standard");
+      setCompanyDescInput("");
+      setActiveCompanyRowIndex(null);
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error || "Failed to create company");
     }
   });
 
@@ -509,6 +562,9 @@ export default function UploadInvoicePage() {
                     if (isAiCompany && !displayReasons.some(r => r.toLowerCase().includes("company"))) {
                       displayReasons.push("Please verify the AI-extracted company.");
                     }
+                    if (isUncategorized || isAiCompany) {
+                      displayReasons.push("Low OCR Confidence. Please verify category and company.");
+                    }
 
                     return (
                       <tr 
@@ -548,8 +604,8 @@ export default function UploadInvoicePage() {
                           {displayReasons.length > 0 && (
                             <div className="mt-1 space-y-0.5">
                               {displayReasons.map((reason, rIdx) => (
-                                <div key={rIdx} className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
-                                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                                <div key={rIdx} className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                                  <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
                                   <span>{reason}</span>
                                 </div>
                               ))}
@@ -559,22 +615,35 @@ export default function UploadInvoicePage() {
 
                         {/* Category Dropdown */}
                         <td className="px-4 py-3 space-y-1">
-                          <select
-                            value={item.category_id || ""}
-                            onChange={(e) => handleItemFieldChange(index, "category_id", e.target.value)}
-                            className={`w-full rounded border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-950 ${
-                              isUncategorized
-                                ? "border-amber-500 bg-amber-500/10 text-amber-800 dark:text-amber-250 font-medium"
-                                : "border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100"
-                            }`}
-                          >
-                            <option value="">Select Category</option>
-                            {categories?.map((cat) => (
-                              <option key={cat.id} value={cat.id}>
-                                {cat.name}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex gap-1.5 items-center">
+                            <select
+                              value={item.category_id || ""}
+                              onChange={(e) => handleItemFieldChange(index, "category_id", e.target.value)}
+                              className={`flex-1 rounded border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-950 ${
+                                isUncategorized
+                                  ? "border-amber-500 bg-amber-500/10 text-amber-800 dark:text-amber-250 font-medium"
+                                  : "border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100"
+                              }`}
+                            >
+                              <option value="" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">Select Category</option>
+                              {categories?.map((cat) => (
+                                <option key={cat.id} value={cat.id} className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+                                  {cat.name}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveCategoryRowIndex(index);
+                                setShowCategoryModal(true);
+                              }}
+                              className="rounded border border-slate-200 bg-white p-1 text-slate-6-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-850"
+                              title="Add Category"
+                            >
+                              <FolderPlus className="h-4 w-4" />
+                            </button>
+                          </div>
                           {isUncategorized && (
                             <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 mt-1">
                               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -587,12 +656,35 @@ export default function UploadInvoicePage() {
 
                         {/* Company Dropdown */}
                         <td className="px-4 py-3 space-y-1">
-                          <SearchableCompanyDropdown
-                            value={item.company || ""}
-                            onChange={(val) => handleItemFieldChange(index, "company", val)}
-                            companies={companies}
-                            isAiCompany={isAiCompany}
-                          />
+                          <div className="flex gap-1.5 items-center">
+                            <select
+                              value={item.company || ""}
+                              onChange={(e) => handleItemFieldChange(index, "company", e.target.value)}
+                              className={`flex-1 rounded border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-950 ${
+                                isAiCompany
+                                  ? "border-amber-500 bg-amber-500/10 text-amber-800 dark:text-amber-250 font-medium"
+                                  : "border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100"
+                              }`}
+                            >
+                              <option value="" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">Select Company</option>
+                              {masterCompanies?.map((comp) => (
+                                <option key={comp.id} value={comp.name} className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+                                  {comp.name} ({comp.type})
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveCompanyRowIndex(index);
+                                setShowCompanyModal(true);
+                              }}
+                              className="rounded border border-slate-200 bg-white p-1 text-slate-6-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-850"
+                              title="Add Company"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </div>
                           {isAiCompany && (
                             <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 mt-1">
                               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -825,9 +917,130 @@ export default function UploadInvoicePage() {
               </button>
               <button
                 onClick={() => handleDuplicateResolve("cancel")}
-                className="w-full rounded-lg bg-white py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 border border-slate-200 transition-colors dark:bg-slate-900 dark:border-slate-800 dark:text-slate-350 dark:hover:bg-slate-850"
+                className="w-full rounded-lg bg-white py-2.5 text-xs font-semibold text-slate-660 hover:bg-slate-50 border border-slate-200 transition-colors dark:bg-slate-900 dark:border-slate-880 dark:text-slate-350 dark:hover:bg-slate-850"
               >
                 Cancel & Discard Upload
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Creation Modal Dialog */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4">Add Medicine Category</h3>
+            <input
+              type="text"
+              value={categoryName}
+              onChange={(e) => setCategoryName(e.target.value)}
+              placeholder="e.g. Injections, Syrup"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100 mb-4"
+            />
+            <div className="flex justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCategoryModal(false);
+                  setActiveCategoryRowIndex(null);
+                }}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-650 hover:bg-slate-50 dark:border-slate-850 dark:bg-slate-850 text-slate-900 dark:text-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!categoryName) {
+                    alert("Category name is required");
+                    return;
+                  }
+                  addCategoryMutation.mutate(categoryName);
+                }}
+                disabled={addCategoryMutation.isPending}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {addCategoryMutation.isPending ? "Creating..." : "Create Category"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Company Creation Modal Dialog */}
+      {showCompanyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4">Add Company</h3>
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Company Name *
+                </label>
+                <input
+                  type="text"
+                  value={companyNameInput}
+                  onChange={(e) => setCompanyNameInput(e.target.value)}
+                  placeholder="e.g. Cipla, Micro Labs"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Company Type *
+                </label>
+                <select
+                  value={companyTypeInput}
+                  onChange={(e) => setCompanyTypeInput(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                >
+                  <option value="Standard" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">Standard</option>
+                  <option value="Generic" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">Generic</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Description (Optional)
+                </label>
+                <textarea
+                  value={companyDescInput}
+                  onChange={(e) => setCompanyDescInput(e.target.value)}
+                  placeholder="Company description..."
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  rows={2}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCompanyModal(false);
+                  setActiveCompanyRowIndex(null);
+                }}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-655 hover:bg-slate-50 dark:border-slate-855 dark:bg-slate-855 text-slate-900 dark:text-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!companyNameInput) {
+                    alert("Company Name is required");
+                    return;
+                  }
+                  addCompanyMutation.mutate({
+                    name: companyNameInput,
+                    type: companyTypeInput,
+                    description: companyDescInput || undefined
+                  });
+                }}
+                disabled={addCompanyMutation.isPending}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {addCompanyMutation.isPending ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
