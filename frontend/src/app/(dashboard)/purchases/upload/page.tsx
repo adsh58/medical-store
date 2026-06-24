@@ -879,7 +879,7 @@ export default function UploadInvoicePage() {
                 <select
                   value={selectedAgencyId}
                   onChange={(e) => setSelectedAgencyId(e.target.value)}
-                  className="rounded border border-slate-200 bg-white p-2 text-xs outline-none dark:border-slate-800 dark:bg-slate-950 w-full sm:w-64 text-slate-900 dark:text-slate-105"
+                  className="rounded border border-slate-200 bg-white p-2 text-xs outline-none focus:ring-1 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950 w-full sm:w-64 text-slate-900 dark:text-slate-100"
                 >
                   <option value="" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-medium">Choose Supplier Agency</option>
                   {agencies?.map((agency) => (
