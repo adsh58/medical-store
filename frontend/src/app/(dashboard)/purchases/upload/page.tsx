@@ -53,6 +53,93 @@ interface AIInvoiceAnalysisReport {
   supplier_gst: string | null;
 }
 
+function SearchableCompanyDropdown({
+  value,
+  onChange,
+  companies,
+  isAiCompany
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  companies: string[];
+  isAiCompany: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchVal, setSearchVal] = useState(value || "");
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    setSearchVal(value || "");
+  }, [value]);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtered = React.useMemo(() => {
+    const q = searchVal.toLowerCase();
+    return companies.filter(c => c.toLowerCase().includes(q));
+  }, [companies, searchVal]);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <div className="relative flex items-center">
+        <input
+          type="text"
+          value={searchVal}
+          placeholder="Select or type company..."
+          onFocus={() => setIsOpen(true)}
+          onChange={(e) => {
+            setSearchVal(e.target.value);
+            onChange(e.target.value);
+            setIsOpen(true);
+          }}
+          className={`w-full rounded border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-950 ${
+            isAiCompany
+              ? "border-amber-500 bg-amber-500/10 text-amber-800 dark:text-amber-250 font-medium"
+              : "border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100"
+          }`}
+        />
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="absolute right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-350 text-[10px]"
+        >
+          ▼
+        </button>
+      </div>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-40 overflow-y-auto rounded border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900 text-xs text-slate-700 dark:text-slate-350">
+          {filtered.length > 0 ? (
+            filtered.map((comp) => (
+              <div
+                key={comp}
+                onClick={() => {
+                  onChange(comp);
+                  setSearchVal(comp);
+                  setIsOpen(false);
+                }}
+                className="cursor-pointer px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                {comp}
+              </div>
+            ))
+          ) : (
+            <div className="px-2 py-1.5 text-slate-400 italic">No matches. Type to use new.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function UploadInvoicePage() {
   const { formatCurrency, currencySymbol } = useCurrency();
   const queryClient = useQueryClient();
@@ -78,6 +165,43 @@ export default function UploadInvoicePage() {
     queryKey: ["upload-categories"],
     queryFn: () => apiClient.get("/medicines/categories").then(res => res.data)
   });
+
+  const { data: medicines } = useQuery<any[]>({
+    queryKey: ["medicines"],
+    queryFn: () => apiClient.get("/medicines?limit=1000").then(res => res.data)
+  });
+
+  const companies = React.useMemo(() => {
+    if (!medicines) return [];
+    const set = new Set<string>();
+    medicines.forEach((m: any) => {
+      if (m.company) set.add(m.company);
+    });
+    return Array.from(set).sort();
+  }, [medicines]);
+
+  const uncategorizedCategory = React.useMemo(() => {
+    return categories?.find(c => c.name.toLowerCase() === "uncategorized");
+  }, [categories]);
+
+  React.useEffect(() => {
+    if (categories && itemsToCommit.length > 0) {
+      const uncategorized = categories.find(c => c.name.toLowerCase() === "uncategorized");
+      if (uncategorized) {
+        let updated = false;
+        const newItems = itemsToCommit.map(item => {
+          if (!item.category_id) {
+            updated = true;
+            return { ...item, category_id: uncategorized.id };
+          }
+          return item;
+        });
+        if (updated) {
+          setItemsToCommit(newItems);
+        }
+      }
+    }
+  }, [categories, itemsToCommit]);
 
   // Upload Mutation
   const uploadMutation = useMutation({
@@ -357,6 +481,8 @@ export default function UploadInvoicePage() {
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider dark:border-slate-800 dark:bg-slate-900/60">
                     <th className="px-4 py-3 min-w-[200px]">Medicine Info</th>
+                    <th className="px-4 py-3 min-w-[150px]">Category</th>
+                    <th className="px-4 py-3 min-w-[200px]">Company</th>
                     <th className="px-4 py-3 min-w-[120px]">Batch / Expiry</th>
                     <th className="px-4 py-3 min-w-[120px]">Quantity (Free)</th>
                     <th className="px-4 py-3 min-w-[100px]">Purchase Rate (GST)</th>
@@ -371,13 +497,26 @@ export default function UploadInvoicePage() {
                     const isIncrease = item.trend === "INCREASED";
                     const isDecrease = item.trend === "DECREASED";
 
+                    const isUncategorized = !item.category_id || categories?.find(c => c.id === item.category_id)?.name.toLowerCase() === "uncategorized";
+                    const isAiCompany = item.company?.toLowerCase() === "ai extracted company" || !item.company || item.company.trim() === "";
+                    const needsReview = item.needs_review || isUncategorized || isAiCompany;
+
+                    // Combine validation reasons
+                    const displayReasons = [...item.review_reasons];
+                    if (isUncategorized && !displayReasons.some(r => r.toLowerCase().includes("category"))) {
+                      displayReasons.push("This medicine still needs a category.");
+                    }
+                    if (isAiCompany && !displayReasons.some(r => r.toLowerCase().includes("company"))) {
+                      displayReasons.push("Please verify the AI-extracted company.");
+                    }
+
                     return (
                       <tr 
                         key={index} 
-                        className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors ${
-                          item.needs_review 
-                            ? "bg-amber-500/5 dark:bg-amber-500/5 border-l-4 border-l-amber-500" 
-                            : ""
+                        className={`transition-colors ${
+                          needsReview 
+                            ? "bg-amber-50/70 hover:bg-amber-100/50 dark:bg-amber-950/20 dark:hover:bg-amber-950/30 border-l-4 border-l-amber-500" 
+                            : "hover:bg-slate-50/50 dark:hover:bg-slate-800/20"
                         }`}
                       >
                         {/* Medicine Info */}
@@ -388,20 +527,13 @@ export default function UploadInvoicePage() {
                             onChange={(e) => handleItemFieldChange(index, "medicine_name", e.target.value)}
                             className="w-full rounded border border-slate-200 dark:border-slate-800 bg-transparent px-1.5 py-1 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                           />
-                          <div className="grid grid-cols-2 gap-1">
-                            <input
-                              type="text"
-                              value={item.company || ""}
-                              placeholder="Company"
-                              onChange={(e) => handleItemFieldChange(index, "company", e.target.value)}
-                              className="rounded border border-slate-200 dark:border-slate-800 bg-transparent px-1 py-0.5 text-[10px] text-slate-500 focus:outline-none"
-                            />
+                          <div className="flex gap-1">
                             <input
                               type="text"
                               value={item.pack_size || ""}
                               placeholder="Pack Size"
                               onChange={(e) => handleItemFieldChange(index, "pack_size", e.target.value)}
-                              className="rounded border border-slate-200 dark:border-slate-800 bg-transparent px-1 py-0.5 text-[10px] text-slate-500 focus:outline-none"
+                              className="w-full rounded border border-slate-200 dark:border-slate-800 bg-transparent px-1 py-0.5 text-[10px] text-slate-500 focus:outline-none"
                             />
                           </div>
                           <input
@@ -411,33 +543,62 @@ export default function UploadInvoicePage() {
                             onChange={(e) => handleItemFieldChange(index, "generic_name", e.target.value)}
                             className="w-full rounded border border-slate-200 dark:border-slate-800 bg-transparent px-1 py-0.5 text-[10px] text-slate-500 focus:outline-none"
                           />
-                          {isNew && (
-                            <div className="pt-1">
-                              <label className="text-[9px] font-bold text-blue-500 dark:text-blue-400 block mb-0.5">NEW MEDICINE CATEGORY</label>
-                              <select
-                                value={item.category_id || ""}
-                                onChange={(e) => handleItemFieldChange(index, "category_id", e.target.value)}
-                                className="w-full rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-1 py-0.5 text-[10px]"
-                              >
-                                <option value="">Select Category</option>
-                                {categories?.map((cat) => (
-                                  <option key={cat.id} value={cat.id}>
-                                    {cat.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          )}
                           
                           {/* Row validation messages */}
-                          {item.needs_review && (
+                          {displayReasons.length > 0 && (
                             <div className="mt-1 space-y-0.5">
-                              {item.review_reasons.map((reason, rIdx) => (
+                              {displayReasons.map((reason, rIdx) => (
                                 <div key={rIdx} className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
                                   <AlertTriangle className="h-3 w-3 shrink-0" />
                                   <span>{reason}</span>
                                 </div>
                               ))}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Category Dropdown */}
+                        <td className="px-4 py-3 space-y-1">
+                          <select
+                            value={item.category_id || ""}
+                            onChange={(e) => handleItemFieldChange(index, "category_id", e.target.value)}
+                            className={`w-full rounded border px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-950 ${
+                              isUncategorized
+                                ? "border-amber-500 bg-amber-500/10 text-amber-800 dark:text-amber-250 font-medium"
+                                : "border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100"
+                            }`}
+                          >
+                            <option value="">Select Category</option>
+                            {categories?.map((cat) => (
+                              <option key={cat.id} value={cat.id}>
+                                {cat.name}
+                              </option>
+                            ))}
+                          </select>
+                          {isUncategorized && (
+                            <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                              <span className="bg-amber-100 dark:bg-amber-950/40 px-1 py-0.5 rounded font-semibold text-[9px] uppercase tracking-wider">
+                                Needs Category
+                              </span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Company Dropdown */}
+                        <td className="px-4 py-3 space-y-1">
+                          <SearchableCompanyDropdown
+                            value={item.company || ""}
+                            onChange={(val) => handleItemFieldChange(index, "company", val)}
+                            companies={companies}
+                            isAiCompany={isAiCompany}
+                          />
+                          {isAiCompany && (
+                            <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                              <span className="bg-amber-100 dark:bg-amber-950/40 px-1 py-0.5 rounded font-semibold text-[9px] uppercase tracking-wider">
+                                Verify Company
+                              </span>
                             </div>
                           )}
                         </td>

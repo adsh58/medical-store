@@ -477,6 +477,10 @@ class PurchaseService:
                 medicine.purchase_rate = item.purchase_rate
                 medicine.doctor_rate = item.doctor_rate
                 medicine.customer_rate = item.customer_rate
+                if item.category_id:
+                    medicine.master_medicine.category_id = item.category_id
+                if item.company:
+                    medicine.master_medicine.company = item.company
                 medicine.updated_by_user_id = user_id
                 db.add(medicine)
                 await db.flush()
