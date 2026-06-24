@@ -440,6 +440,27 @@ class AIService:
                     needs_review = True
                     review_reasons.append(f"Purchase rate changed drastically by {round(price_diff_pct * 100)}% (from {old_rate} to {item.purchase_rate})")
 
+            comp_val = getattr(item, "company", None)
+            if medicine and medicine.company:
+                comp_val = medicine.company
+
+            resolved_company_name = None
+            if comp_val and comp_val.strip() and comp_val.lower() != "ai extracted company":
+                comp_name_clean = comp_val.strip()
+                from app.models.all_models import Company
+                from sqlalchemy import func, select
+                res_comp = await db.execute(
+                    select(Company).filter(func.lower(Company.name) == func.lower(comp_name_clean), Company.deleted_at == None)
+                )
+                comp_obj = res_comp.scalars().first()
+                if not comp_obj:
+                    comp_obj = Company(name=comp_name_clean, type="Standard")
+                    db.add(comp_obj)
+                    await db.flush()
+                resolved_company_name = comp_obj.name
+            else:
+                resolved_company_name = comp_val
+
             analysis_items.append(
                 RateComparisonItem(
                     medicine_id=medicine.id if medicine else None,
@@ -460,7 +481,7 @@ class AIService:
                     alert_message=alert_message,
                     recommended_doctor_rate=round(rec_doctor, 2),
                     recommended_customer_rate=round(rec_customer, 2),
-                    company=getattr(item, "company", None),
+                    company=resolved_company_name,
                     pack_size=getattr(item, "pack_size", None),
                     generic_name=getattr(item, "generic_name", None),
                     confidence=confidence,

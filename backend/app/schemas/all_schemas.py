@@ -301,8 +301,8 @@ class AgencyResponse(BaseModel):
                 if city:
                     data["display_name"] = f"{name} ({city})"
                 elif address:
-                    addr_part = address.split("\n")[0].split(",")[0]
-                    data["display_name"] = f"{name} - {addr_part[:40]}"
+                    addr_part = address.split("\n")[0].split(",")[0].strip()
+                    data["display_name"] = f"{name} ({addr_part[:40]})"
                 else:
                     data["display_name"] = name
         elif hasattr(data, "name"):
@@ -313,8 +313,8 @@ class AgencyResponse(BaseModel):
                 if city:
                     data.display_name = f"{name} ({city})"
                 elif address:
-                    addr_part = address.split("\n")[0].split(",")[0]
-                    data.display_name = f"{name} - {addr_part[:40]}"
+                    addr_part = address.split("\n")[0].split(",")[0].strip()
+                    data.display_name = f"{name} ({addr_part[:40]})"
                 else:
                     data.display_name = name
         return data

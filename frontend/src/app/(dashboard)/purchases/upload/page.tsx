@@ -167,6 +167,13 @@ export default function UploadInvoicePage() {
   const [showCompanyModal, setShowCompanyModal] = useState<boolean>(false);
   const [activeCompanyRowIndex, setActiveCompanyRowIndex] = useState<number | null>(null);
 
+  const [showSupplierModal, setShowSupplierModal] = useState<boolean>(false);
+  const [supplierNameInput, setSupplierNameInput] = useState<string>("");
+  const [supplierTypeInput, setSupplierTypeInput] = useState<string>("");
+  const [supplierAddressInput, setSupplierAddressInput] = useState<string>("");
+  const [supplierPhoneInput, setSupplierPhoneInput] = useState<string>("");
+  const [supplierGstInput, setSupplierGstInput] = useState<string>("");
+
   // Queries
   const { data: agencies } = useQuery<Agency[]>({
     queryKey: ["upload-agencies"],
@@ -298,6 +305,23 @@ export default function UploadInvoicePage() {
     },
     onError: (err: any) => {
       alert(err.response?.data?.error || "Failed to create company");
+    }
+  });
+
+  const addSupplierMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post("/agencies/", data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["upload-agencies"] });
+      setSelectedAgencyId(res.data.id);
+      setShowSupplierModal(false);
+      setSupplierNameInput("");
+      setSupplierTypeInput("");
+      setSupplierAddressInput("");
+      setSupplierPhoneInput("");
+      setSupplierGstInput("");
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error || "Failed to create supplier");
     }
   });
 
@@ -851,18 +875,28 @@ export default function UploadInvoicePage() {
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
                 Select Supplying Agency (Supplier)
               </label>
-              <select
-                value={selectedAgencyId}
-                onChange={(e) => setSelectedAgencyId(e.target.value)}
-                className="rounded border border-slate-200 bg-white p-2 text-xs outline-none dark:border-slate-800 dark:bg-slate-950 w-full sm:w-64"
-              >
-                <option value="">Choose Supplier Agency</option>
-                {agencies?.map((agency) => (
-                  <option key={agency.id} value={agency.id}>
-                    {agency.display_name || agency.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex gap-2 items-center">
+                <select
+                  value={selectedAgencyId}
+                  onChange={(e) => setSelectedAgencyId(e.target.value)}
+                  className="rounded border border-slate-200 bg-white p-2 text-xs outline-none dark:border-slate-800 dark:bg-slate-950 w-full sm:w-64 text-slate-900 dark:text-slate-105"
+                >
+                  <option value="" className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-medium">Choose Supplier Agency</option>
+                  {agencies?.map((agency) => (
+                    <option key={agency.id} value={agency.id} className="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+                      {agency.display_name || agency.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowSupplierModal(true)}
+                  className="rounded border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-850"
+                  title="Add Supplier"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             
             <div className="flex gap-2 self-end sm:self-auto">
@@ -1041,6 +1075,107 @@ export default function UploadInvoicePage() {
                 className="rounded-lg bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-500 disabled:opacity-50"
               >
                 {addCompanyMutation.isPending ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Supplier Creation Modal Dialog */}
+      {showSupplierModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4">Add Supplier</h3>
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Supplier Name *
+                </label>
+                <input
+                  type="text"
+                  value={supplierNameInput}
+                  onChange={(e) => setSupplierNameInput(e.target.value)}
+                  placeholder="e.g. Shiv Medical Agency"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Supplier Type
+                </label>
+                <input
+                  type="text"
+                  value={supplierTypeInput}
+                  onChange={(e) => setSupplierTypeInput(e.target.value)}
+                  placeholder="e.g. Distributor, Wholesaler"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Address (Optional)
+                </label>
+                <textarea
+                  value={supplierAddressInput}
+                  onChange={(e) => setSupplierAddressInput(e.target.value)}
+                  placeholder="Physical address..."
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Phone (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={supplierPhoneInput}
+                  onChange={(e) => setSupplierPhoneInput(e.target.value)}
+                  placeholder="Phone number..."
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 font-mono">
+                  GST Number (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={supplierGstInput}
+                  onChange={(e) => setSupplierGstInput(e.target.value)}
+                  placeholder="e.g. 24AAAAS1234A1Z1"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none transition-all focus:border-emerald-500 dark:border-slate-800 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setShowSupplierModal(false)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-650 hover:bg-slate-50 dark:border-slate-850 dark:bg-slate-850 text-slate-900 dark:text-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!supplierNameInput) {
+                    alert("Supplier Name is required");
+                    return;
+                  }
+                  addSupplierMutation.mutate({
+                    name: supplierNameInput,
+                    contact_name: supplierTypeInput || null,
+                    address: supplierAddressInput || null,
+                    phone: supplierPhoneInput || null,
+                    gst_number: supplierGstInput || null
+                  });
+                }}
+                disabled={addSupplierMutation.isPending}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {addSupplierMutation.isPending ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
