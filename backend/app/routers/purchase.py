@@ -18,7 +18,7 @@ from app.services.ai_service import ai_service
 from app.repositories.all_repos import invoice_repo, ai_log_repo, medicine_repo
 from app.core.dependencies import RoleChecker, get_current_user
 from app.models.all_models import User, Agency, MasterCategory
-from app.core.exceptions import NotFoundException, BadRequestException
+from app.core.exceptions import NotFoundException, BadRequestException, RateLimitException, AppException
 
 router = APIRouter(prefix="/purchases", tags=["Purchase Management"])
 logger = logging.getLogger("app.routers.purchase")
@@ -132,6 +132,8 @@ async def upload_invoice_ai(
         except Exception:
             pass
             
+        if isinstance(e, AppException):
+            raise e
         raise BadRequestException(f"AI Invoice processing failed: {str(e)}")
         
     finally:

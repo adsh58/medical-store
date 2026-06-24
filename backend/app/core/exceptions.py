@@ -27,6 +27,10 @@ class ForbiddenException(AppException):
     def __init__(self, message: str = "Forbidden"):
         super().__init__(message, status.HTTP_403_FORBIDDEN)
 
+class RateLimitException(AppException):
+    def __init__(self, message: str = "Rate limit exceeded"):
+        super().__init__(message, status.HTTP_429_TOO_MANY_REQUESTS)
+
 import traceback
 import uuid
 from app.database import AsyncSessionLocal
@@ -59,8 +63,20 @@ async def log_to_db(request: Request, log_level: str, message: str, stack_trace:
             except Exception:
                 pass
                 
+        # Determine store_id from user if possible
+        store_id = None
         async with AsyncSessionLocal() as db:
+            if user_id:
+                try:
+                    from app.models.all_models import User
+                    from sqlalchemy import select
+                    user_res = await db.execute(select(User.store_id).where(User.id == user_id))
+                    store_id = user_res.scalar()
+                except Exception as db_err:
+                    logger.error(f"Failed to lookup user store_id in log_to_db: {str(db_err)}")
+
             log_entry = SystemLog(
+                store_id=store_id,
                 log_level=log_level,
                 module=module,
                 message=message,

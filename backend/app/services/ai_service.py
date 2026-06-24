@@ -6,7 +6,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.exceptions import BadRequestException
+from app.core.exceptions import BadRequestException, RateLimitException, AppException
 from app.repositories.all_repos import medicine_repo
 
 logger = logging.getLogger("app.ai_service")
@@ -289,21 +289,8 @@ class AIService:
                             is_429 = "429" in err_msg or "quota" in err_msg.lower() or "exhausted" in err_msg.lower() or "rate limit" in err_msg.lower()
                             
                             if is_429:
-                                rate_limit_occurrences += 1
-                                logger.warning(
-                                    f"API request {request_count} to {model_name} failed with HTTP 429 Rate Limit in {duration:.2f}s. "
-                                    f"Occurrence count: {rate_limit_occurrences}. Error: {err_msg}"
-                                )
-                                if attempt < len(backoff_delays):
-                                    delay = backoff_delays[attempt]
-                                    logger.info(f"Exponential backoff retry {attempt + 1}. Waiting {delay} seconds...")
-                                    await asyncio.sleep(delay)
-                                    attempt += 1
-                                    continue
-                                else:
-                                    logger.error(f"All retries exhausted for model {model_name} due to rate limits.")
-                                    errors.append(f"{model_name}: Rate limited (429) after {attempt} retries.")
-                                    break
+                                logger.error(f"Gemini API rate limited (429) on model {model_name}: {err_msg}")
+                                raise RateLimitException("AI service is temporarily rate limited. Please try again in a few minutes.")
                             else:
                                 logger.error(
                                     f"API request {request_count} to {model_name} failed with non-429 error in {duration:.2f}s: {err_msg}"
@@ -315,10 +302,7 @@ class AIService:
                         break
                         
                 if response_text is None:
-                    if rate_limit_occurrences > 0:
-                        raise BadRequestException("AI service is temporarily rate limited. Please wait 1 minute and try again.")
-                    else:
-                        raise BadRequestException(f"AI Extraction failed on all fallback models: {'; '.join(errors)}")
+                    raise BadRequestException(f"AI Extraction failed on all fallback models: {'; '.join(errors)}")
 
                 # Parsed schema validation
                 extracted_invoice = ExtractedInvoice.model_validate_json(response_text)
@@ -326,10 +310,10 @@ class AIService:
 
             except Exception as e:
                 logger.exception(f"Gemini API call failed: {str(e)}")
-                if isinstance(e, BadRequestException):
+                if isinstance(e, AppException):
                     raise e
-                if "429" in str(e) or "quota" in str(e).lower() or "exhausted" in str(e).lower():
-                    raise BadRequestException("AI service is temporarily rate limited. Please wait 1 minute and try again.")
+                if "429" in str(e) or "quota" in str(e).lower() or "exhausted" in str(e).lower() or "rate limit" in str(e).lower():
+                    raise RateLimitException("AI service is temporarily rate limited. Please try again in a few minutes.")
                 raise BadRequestException(f"AI Extraction failed: {str(e)}")
         else:
             # Fallback mock parsing mode for testing / clean local execution
