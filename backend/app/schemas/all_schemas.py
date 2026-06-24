@@ -168,9 +168,12 @@ class MedicineCreate(BaseModel):
     current_purchase_rate: float = Field(gt=0)
     doctor_selling_rate: float = Field(gt=0)
     customer_selling_rate: float = Field(gt=0)
+    bypass_validation: bool = False
 
     @model_validator(mode="after")
     def validate_pricing_margins(self) -> 'MedicineCreate':
+        if self.bypass_validation:
+            return self
         if self.doctor_selling_rate < self.current_purchase_rate:
             raise ValueError("Doctor selling rate must be greater than or equal to current purchase rate")
         if self.customer_selling_rate < self.doctor_selling_rate:

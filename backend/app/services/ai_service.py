@@ -440,6 +440,17 @@ class AIService:
                     needs_review = True
                     review_reasons.append(f"Purchase rate changed drastically by {round(price_diff_pct * 100)}% (from {old_rate} to {item.purchase_rate})")
 
+            if medicine:
+                current_doc_rate = float(medicine.doctor_rate)
+                current_cust_rate = float(medicine.customer_rate)
+                if item.purchase_rate > current_doc_rate or item.purchase_rate > current_cust_rate:
+                    needs_review = True
+                    review_reasons.append(
+                        f"Rate Review Required: Purchase Rate increased above selling rates. "
+                        f"Doctor Rate: ₹{current_doc_rate:.2f}, Customer Rate: ₹{current_cust_rate:.2f}, New Purchase Rate: ₹{item.purchase_rate:.2f}. "
+                        f"Please review pricing."
+                    )
+
             comp_val = getattr(item, "company", None)
             if medicine and medicine.company:
                 comp_val = medicine.company

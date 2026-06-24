@@ -459,7 +459,8 @@ class PurchaseService:
                     mrp=item.mrp,
                     current_purchase_rate=item.purchase_rate,
                     doctor_selling_rate=item.doctor_rate,
-                    customer_selling_rate=item.customer_rate
+                    customer_selling_rate=item.customer_rate,
+                    bypass_validation=True
                 )
                 medicine = await medicine_service.create_medicine(db, med_in, store_id=store_id, user_id=user_id)
                 await db.flush()
@@ -570,6 +571,25 @@ class PurchaseService:
                 "reason": "PURCHASE",
                 "user_id": user_id
             })
+
+            if item.purchase_rate > item.doctor_rate or item.purchase_rate > item.customer_rate:
+                from app.models.all_models import SystemLog
+                log_entry = SystemLog(
+                    store_id=store_id,
+                    log_level="WARNING",
+                    module="purchases",
+                    message=(
+                        f"Rate Review Required: Purchase Rate increased above selling rates for '{item.medicine_name}'.\n\n"
+                        f"Doctor Rate: ₹{item.doctor_rate:.2f}\n"
+                        f"Customer Rate: ₹{item.customer_rate:.2f}\n"
+                        f"New Purchase Rate: ₹{item.purchase_rate:.2f}\n\n"
+                        f"Please review pricing."
+                    ),
+                    request_path="/api/v1/purchases/invoices/commit-ai",
+                    request_method="POST",
+                    user_id=user_id
+                )
+                db.add(log_entry)
 
         await ai_log_repo.create(db, obj_in={
             "invoice_id": invoice_obj.id,
