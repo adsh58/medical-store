@@ -112,6 +112,63 @@ async def seed_data():
                     doctor_margin=15.0
                 )
                 db.add(default_setting)
+
+            # --- HindMed Store Seeding ---
+            HIND_STORE_ID = uuid.UUID("f2b6e159-24a0-4bd1-ba09-22a00c8f5858")
+            query_hind_store = select(Store).filter(Store.id == HIND_STORE_ID)
+            res_hind_store = await db.execute(query_hind_store)
+            hind_store = res_hind_store.scalars().first()
+            if not hind_store:
+                logger.info("Seeding HindMed store...")
+                hind_store = Store(
+                    id=HIND_STORE_ID,
+                    name="HindMed",
+                    email="HindMed998@medical.com",
+                    phone="9989989988",
+                    address="Hind Market, New Delhi",
+                    active=True
+                )
+                db.add(hind_store)
+                await db.flush()
+
+            # Seed or verify the HindMed admin account
+            query_hind_admin = select(User).filter(User.email == "HindMed998@medical.com")
+            res_hind_admin = await db.execute(query_hind_admin)
+            hind_admin = res_hind_admin.scalars().first()
+            if not hind_admin:
+                logger.info("Seeding HindMed administrator profile...")
+                # Fetch admin role
+                query_role = select(Role).filter(Role.name == "ADMIN")
+                res_role = await db.execute(query_role)
+                admin_role = res_role.scalars().first()
+                
+                hind_admin_user = User(
+                    email="HindMed998@medical.com",
+                    password_hash=hash_password("Hind@xyz332"),
+                    full_name="HindMed Admin",
+                    role_id=admin_role.id,
+                    store_id=HIND_STORE_ID,
+                    is_active=True
+                )
+                db.add(hind_admin_user)
+            elif hind_admin.store_id is None:
+                hind_admin.store_id = HIND_STORE_ID
+                db.add(hind_admin)
+
+            # Seed default system settings for HindMed store
+            query_hind_setting = select(SystemSetting).filter(SystemSetting.store_id == HIND_STORE_ID)
+            res_hind_setting = await db.execute(query_hind_setting)
+            hind_setting = res_hind_setting.scalars().first()
+            if not hind_setting:
+                logger.info("Seeding default system settings for HindMed...")
+                default_hind_setting = SystemSetting(
+                    store_id=HIND_STORE_ID,
+                    store_name="HindMed",
+                    currency="₹",
+                    customer_margin=30.0,
+                    doctor_margin=15.0
+                )
+                db.add(default_hind_setting)
             
             await db.commit()
             logger.info("Database seeding checked/completed.")
